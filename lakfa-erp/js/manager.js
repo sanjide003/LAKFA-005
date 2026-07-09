@@ -32,6 +32,7 @@ const KEYS = {
   auditLogs: "lakfa_audit_logs",
   employees: "lakfa_employees",
   salaryPayments: "lakfa_salary_payments",
+  assets: "lakfa_assets",
   financeAccounts: "lakfa_finance_accounts",
   financeCategories: "lakfa_finance_categories",
   financeTransfers: "lakfa_finance_transfers",
@@ -58,7 +59,7 @@ const WRITABLE_FORM_IDS = new Set([
   "purchase-form", "inventory-form", "raw-material-form", "sales-form", "orders-form", "delivery-form",
   "expenses-form", "income-form", "cashbook-form", "bankbook-form", "production-form", "sharing-form",
   "finance-account-form", "finance-category-form", "finance-transfer-form", "daily-account-form", "payment-request-form",
-  "employee-form", "salary-payment-form"
+  "employee-form", "salary-payment-form", "asset-form"
 ]);
 const WRITABLE_KEYS = new Set([
   KEYS.products, KEYS.customers, KEYS.suppliers, KEYS.investors,
@@ -66,7 +67,7 @@ const WRITABLE_KEYS = new Set([
   KEYS.expenses, KEYS.income, KEYS.cashBook, KEYS.bankBook, KEYS.production, KEYS.sharing,
   KEYS.financeAccounts, KEYS.financeCategories, KEYS.financeTransfers, KEYS.dailyAccounts,
   KEYS.investorExpenses, KEYS.investorPaymentRequests, KEYS.notifications, KEYS.profitDistributions, KEYS.auditLogs,
-  KEYS.employees, KEYS.salaryPayments
+  KEYS.employees, KEYS.salaryPayments, KEYS.assets
 ]);
 
 const COLLECTION_BY_KEY = {
@@ -100,6 +101,7 @@ const COLLECTION_BY_KEY = {
   [KEYS.auditLogs]: COLLECTIONS.auditLogs,
   [KEYS.employees]: COLLECTIONS.employees,
   [KEYS.salaryPayments]: COLLECTIONS.salaryPayments,
+  [KEYS.assets]: COLLECTIONS.assets,
   [KEYS.sharing]: COLLECTIONS.profitDistributions
 };
 
@@ -579,6 +581,9 @@ function renderModule(sectionId) {
       break;
     case "employees":
       renderEmployeesSalaryDashboard();
+      break;
+    case "assets":
+      renderAssetsDashboard();
       break;
     case "accounting":
       renderAccountingSummary();
@@ -1679,6 +1684,48 @@ async function submitSupplierPayment(event) {
 
 
 
+
+function renderAssetsDashboard() {
+  renderAssetSummaryCards();
+  renderAssetsTable();
+}
+
+function renderAssetSummaryCards() {
+  const cards = document.getElementById("asset-summary-cards");
+  if (!cards) return;
+  const assets = getStoredRecords(KEYS.assets);
+  const activeAssets = assets.filter((asset) => !["Voided", "Sold", "Cancelled"].includes(asset.status));
+  const totalValue = activeAssets.reduce((sum, asset) => sum + getNumberFromValue(asset.purchaseValue), 0);
+  const machineryValue = activeAssets.filter((asset) => asset.type === "Machinery").reduce((sum, asset) => sum + getNumberFromValue(asset.purchaseValue), 0);
+  cards.innerHTML = reportCard("Active Assets", String(activeAssets.length), "Assets not sold/voided")
+    + reportCard("Total Asset Value", formatCurrency(totalValue), "Purchase-value basis")
+    + reportCard("Machinery Value", formatCurrency(machineryValue), "Machinery register value");
+}
+
+function renderAssetsTable() {
+  const tbody = document.getElementById("assets-table-body");
+  if (!tbody) return;
+  const assets = getStoredRecords(KEYS.assets);
+  tbody.innerHTML = assets.length ? assets.map((asset) => `
+    <tr><td><strong>${escapeHtml(asset.assetName || '')}</strong><br><small>${escapeHtml(asset.id)}</small></td><td>${escapeHtml(asset.type || '')}</td><td><strong>${formatCurrency(asset.purchaseValue)}</strong></td><td>${asset.purchaseDate ? formatDate(asset.purchaseDate) : '-'}</td><td>${escapeHtml(asset.vendor || '')}</td><td>${escapeHtml(asset.condition || '')}</td><td><span class="badge ${['Voided', 'Cancelled'].includes(asset.status) ? 'badge-danger' : asset.status === 'Sold' ? 'badge-warning' : 'badge-success'}">${escapeHtml(asset.status || 'Active')}</span></td><td class="text-right"><button class="btn-secondary btn-sm asset-edit" data-id="${asset.id}">Edit</button> ${!['Voided', 'Cancelled'].includes(asset.status) ? `<button class="btn-danger btn-sm asset-void" data-id="${asset.id}">Void/Cancel</button>` : ''} <button class="btn-danger btn-sm asset-delete" data-id="${asset.id}">Delete</button></td></tr>
+  `).join("") : `<tr><td colspan="8" class="text-center">No assets registered yet.</td></tr>`;
+  tbody.querySelectorAll(".asset-edit").forEach((btn) => btn.addEventListener("click", () => loadRecordForEdit(KEYS.assets, btn.dataset.id)));
+  tbody.querySelectorAll(".asset-void").forEach((btn) => btn.addEventListener("click", () => voidAsset(btn.dataset.id)));
+  tbody.querySelectorAll(".asset-delete").forEach((btn) => btn.addEventListener("click", () => deleteRecord(KEYS.assets, btn.dataset.id)));
+}
+
+async function voidAsset(id) {
+  const asset = getStoredRecords(KEYS.assets).find((row) => row.id === id);
+  if (!asset || asset.status === "Voided") return;
+  if (!confirm("Void/cancel this asset and reverse linked asset ledger entries?")) return;
+  await reconcileAssetLedger(null, { isDelete: true, id, previous: asset });
+  await updateCollectionRecord(COLLECTIONS.assets, id, { status: "Voided", voidedAt: new Date().toISOString() });
+  showToast("Asset voided.", "success");
+  await refreshActiveData();
+}
+
+
+
 function initEmployeeSalaryUi() {
   ["close-salary-history-modal-btn", "cancel-salary-history-modal-btn"].forEach((id) => document.getElementById(id)?.addEventListener("click", closeSalaryHistoryModal));
   document.getElementById("salary-history-modal")?.addEventListener("click", (event) => {
@@ -2441,6 +2488,7 @@ function getReportRows(reportType) {
   const investors = getStoredRecords(KEYS.investors);
   const sharing = getStoredRecords(KEYS.sharing);
   const salaryPayments = getStoredRecords(KEYS.salaryPayments).filter((row) => row.status !== "Voided");
+  const assets = getStoredRecords(KEYS.assets);
 
   if (reportType === "profitLoss") {
     return [
@@ -2469,6 +2517,18 @@ function getReportRows(reportType) {
       const rate = parseFloat(item.costPrice || item.rate || item.avgCost || 0);
       return { item: item.name || item.itemName || item.id, type: item.stockType || item.category || "-", stock: currentStock, unit: item.unit || "", valuation: currentStock * rate };
     });
+  }
+
+  if (reportType === "assets") {
+    return assets.map((asset) => ({
+      assetName: asset.assetName,
+      type: asset.type,
+      purchaseValue: getNumberFromValue(asset.purchaseValue),
+      purchaseDate: asset.purchaseDate,
+      vendor: asset.vendor || "-",
+      condition: asset.condition || "-",
+      status: asset.status || "Active"
+    }));
   }
 
   if (reportType === "salesPurchase") {
@@ -2505,11 +2565,13 @@ function renderAdvancedReports() {
     const stockValue = getReportRows("stock").reduce((sum, row) => sum + row.valuation, 0);
     const salesPurchase = getReportRows("salesPurchase");
     const salaryTotal = getReportRows("profitLoss").find((row) => row.metric === "Salary Expense")?.amount || 0;
+    const assetValue = getReportRows("assets").filter((row) => !["Voided", "Cancelled"].includes(row.status)).reduce((sum, row) => sum + getNumberFromValue(row.purchaseValue), 0);
     cards.innerHTML = reportCard("Profit / Loss", formatCurrency(profit), "Sales + income - purchases - expenses - salary")
       + reportCard("Stock Valuation", formatCurrency(stockValue), "Current stock × available cost")
       + reportCard("Sales Total", formatCurrency(salesPurchase.find((row) => row.metric === "Sales Total")?.value || 0), "Firestore sales summary")
       + reportCard("Purchase Total", formatCurrency(salesPurchase.find((row) => row.metric === "Purchase Total")?.value || 0), "Firestore purchase summary")
-      + reportCard("Salary Expense", formatCurrency(salaryTotal), "Employee salary payments");
+      + reportCard("Salary Expense", formatCurrency(salaryTotal), "Employee salary payments")
+      + reportCard("Asset Valuation", formatCurrency(assetValue), "Active asset register value");
   }
   renderReportTable("advanced-report-table", "profitLoss");
 }
@@ -3732,6 +3794,31 @@ function initWritableFormListeners() {
   });
 
 
+
+  setupFirestoreForm({
+    formId: "asset-form",
+    key: KEYS.assets,
+    submitButtonId: "asset-submit-btn",
+    validate: (data) => data.assetName && data.type && data.purchaseValue >= 0 && data.purchaseDate,
+    getData: () => ({
+      assetName: getValue("asset-name"),
+      type: getValue("asset-type"),
+      purchaseValue: getNumber("asset-value"),
+      purchaseDate: getValue("asset-date"),
+      vendor: getValue("asset-vendor"),
+      condition: getValue("asset-condition"),
+      status: getValue("asset-status"),
+      notes: getValue("asset-notes")
+    }),
+    populate: populateAsset,
+    afterSave: async (data, meta) => {
+      await reconcileAssetLedger(data, meta);
+    },
+    beforeDelete: async (record) => {
+      await reconcileAssetLedger(null, { isDelete: true, id: record.id, previous: record });
+    }
+  });
+
   setupFirestoreForm({
     formId: "employee-form",
     key: KEYS.employees,
@@ -4302,13 +4389,37 @@ function addUnifiedLedgerCreateOperation(operations, data, meta) {
 }
 
 
+
+async function reconcileAssetLedger(data, meta) {
+  const operations = [];
+  const sourceId = meta.id || meta.previous?.id;
+  addLinkedRecordsDeleteOperations(operations, KEYS.ledgerEntries, sourceId);
+  if (!meta.isDelete && !["Voided", "Cancelled"].includes(data?.status)) {
+    operations.push({ type: "set", collectionName: COLLECTIONS.ledgerEntries, payload: {
+      sourceId,
+      date: data.purchaseDate,
+      module: "Assets & Machinery",
+      account: "Fixed Assets",
+      type: "asset-purchase",
+      debit: getNumberFromValue(data.purchaseValue),
+      credit: 0,
+      referenceCollection: COLLECTIONS.assets,
+      referenceId: sourceId,
+      description: `${data.assetName} purchased from ${data.vendor || 'vendor not specified'}`,
+      status: data.status === "Voided" ? "voided" : "posted"
+    }});
+  }
+  if (operations.length) await commitBatchOperations(operations);
+}
+
+
 async function reconcileSalaryPayment(data, meta) {
   const operations = [];
   const sourceId = meta.id || meta.previous?.id;
   addLinkedLedgerDeleteOperations(operations, sourceId);
   addLinkedRecordsDeleteOperations(operations, KEYS.ledgerEntries, sourceId);
   addLinkedRecordsDeleteOperations(operations, KEYS.expenses, sourceId);
-  if (!meta.isDelete && data?.status !== "Voided") {
+  if (!meta.isDelete && !["Voided", "Cancelled"].includes(data?.status)) {
     operations.push({ type: "set", collectionName: COLLECTIONS.expenses, payload: {
       sourceId,
       date: data.paymentDate,
@@ -4818,6 +4929,11 @@ function getFormConfigForKey(key) {
       populate: populateBankBook,
       beforeDelete: (record) => reconcileLedgerBalancesAfterDelete(KEYS.bankBook, record)
     },
+    [KEYS.assets]: {
+      submitButtonId: "asset-submit-btn",
+      populate: populateAsset,
+      beforeDelete: (record) => reconcileAssetLedger(null, { isDelete: true, id: record.id, previous: record })
+    },
     [KEYS.employees]: { submitButtonId: "employee-submit-btn", populate: populateEmployee },
     [KEYS.salaryPayments]: {
       submitButtonId: "salary-payment-submit-btn",
@@ -4996,6 +5112,18 @@ function populateProduction(record) {
 }
 
 
+
+function populateAsset(record) {
+  setValue("asset-name", record.assetName);
+  setValue("asset-type", record.type);
+  setValue("asset-value", record.purchaseValue);
+  setValue("asset-date", record.purchaseDate);
+  setValue("asset-vendor", record.vendor);
+  setValue("asset-condition", record.condition);
+  setValue("asset-status", record.status);
+  setValue("asset-notes", record.notes);
+}
+
 function populateEmployee(record) {
   setValue("emp-name", record.name);
   setValue("emp-phone", record.phone);
@@ -5049,6 +5177,7 @@ function activeSectionKey() {
     bankbook: KEYS.bankBook,
     "company-finance": KEYS.dailyAccounts,
     employees: KEYS.employees,
+    assets: KEYS.assets,
     production: KEYS.production,
     "raw-materials": KEYS.rawMaterials,
     "investment-sharing": KEYS.sharing
