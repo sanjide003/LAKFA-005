@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Lakfa ERP</title>
+  <desc id="desc">Lakfa ERP teal leaf and ledger mark.</desc>
+  <rect width="512" height="512" rx="112" fill="#0f766e"/>
+  <path d="M145 306c42-118 131-170 253-156-4 122-83 209-205 221 30-56 73-100 129-132-79 22-136 75-177 067Z" fill="#ecfdf5"/>
+  <path d="M122 357h268v38H122zM122 416h268v38H122z" fill="#ccfbf1" opacity=".95"/>
+  <path d="M118 108h129v38H118zM118 169h97v38h-97z" fill="#ffffff" opacity=".9"/>
+</svg>
