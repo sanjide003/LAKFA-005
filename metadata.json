@@ -1,0 +1,6 @@
+{
+  "name": "Lakfa ERP",
+  "description": "A clean, professional PWA-ready Lakfa ERP application for managing food business operations.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

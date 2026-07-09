@@ -1,0 +1,16 @@
+{
+  "version": 2,
+  "name": "lakfa-erp",
+  "cleanUrls": true,
+  "headers": [
+    {
+      "source": "/lakfa-erp/service-worker.js",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, must-revalidate"
+        }
+      ]
+    }
+  ]
+}

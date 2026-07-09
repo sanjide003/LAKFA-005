@@ -1,0 +1,171 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function currentUserDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function hasActiveRole(role) {
+      return isSignedIn()
+        && currentUserDoc().data.status == 'active'
+        && currentUserDoc().data.role == role;
+    }
+
+    function isAdmin() {
+      return hasActiveRole('admin');
+    }
+
+    function isInvestor() {
+      return hasActiveRole('investor');
+    }
+
+    function isAllowedUserRole() {
+      return request.resource.data.role in ['admin', 'investor'];
+    }
+
+    function isAllowedUserStatus() {
+      return request.resource.data.status in ['active', 'inactive', 'suspended'];
+    }
+
+    function hasOperationalAuditFields() {
+      return request.resource.data.keys().hasAll(['updatedAt', 'updatedBy'])
+        && !request.resource.data.keys().hasAny(['role']);
+    }
+
+    function validCompanyProfile() {
+      return request.resource.data.keys().hasOnly([
+        'companyName', 'legalName', 'businessType', 'businessCategory',
+        'gst', 'gstin', 'address', 'state', 'pincode', 'phone', 'email',
+        'website', 'logoDataUrl', 'signatureDataUrl', 'logoUrl',
+        'signatureLogoUrl', 'socialLinks', 'notes', 'updatedAt'
+      ]);
+    }
+
+    function validAppSettings() {
+      return request.resource.data.keys().hasOnly([
+        'modules', 'appearance', 'companyState', 'updatedAt'
+      ]);
+    }
+
+    function validSettingsWrite(settingId) {
+      return (settingId == 'companyProfile' && validCompanyProfile())
+        || (settingId == 'appSettings' && validAppSettings());
+    }
+
+    // Users can read their own role metadata. Admins can manage all user records.
+    match /users/{userId} {
+      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow create, update: if isAdmin()
+        && request.resource.data.keys().hasOnly(['role', 'status', 'displayName', 'email', 'createdAt', 'createdBy', 'updatedAt', 'updatedBy'])
+        && isAllowedUserRole()
+        && isAllowedUserStatus();
+      allow delete: if isAdmin();
+    }
+
+    match /settings/{settingId} {
+      allow read: if isAdmin() || isInvestor();
+      allow create, update: if isAdmin() && validSettingsWrite(settingId);
+      allow delete: if isAdmin();
+    }
+
+    match /products/{recordId} {
+      allow read: if isAdmin() || isInvestor();
+      allow create, update: if isAdmin() && hasOperationalAuditFields();
+      allow delete: if isAdmin();
+    }
+
+    match /customers/{recordId} {
+      allow read: if isAdmin() || isInvestor();
+      allow create, update: if isAdmin() && hasOperationalAuditFields();
+      allow delete: if isAdmin();
+    }
+
+    match /suppliers/{recordId} {
+      allow read: if isAdmin() || isInvestor();
+      allow create, update: if isAdmin() && hasOperationalAuditFields();
+      allow delete: if isAdmin();
+    }
+
+    match /investors/{recordId} {
+      allow read: if isAdmin() || isInvestor();
+      allow create, update: if isAdmin() && hasOperationalAuditFields();
+      allow delete: if isAdmin();
+    }
+
+    match /purchases/{recordId} {
+      allow read: if isAdmin() || isInvestor();
+      allow create, update: if isAdmin() && hasOperationalAuditFields();
+      allow delete: if isAdmin();
+    }
+
+    match /inventory/{recordId} {
+      allow read: if isAdmin() || isInvestor();
+      allow create, update: if isAdmin() && hasOperationalAuditFields();
+      allow delete: if isAdmin();
+    }
+
+    match /sales/{recordId} {
+      allow read: if isAdmin() || isInvestor();
+      allow create, update: if isAdmin() && hasOperationalAuditFields();
+      allow delete: if isAdmin();
+    }
+
+    match /orders/{recordId} {
+      allow read: if isAdmin() || isInvestor();
+      allow create, update: if isAdmin() && hasOperationalAuditFields();
+      allow delete: if isAdmin();
+    }
+
+    match /deliveries/{recordId} {
+      allow read: if isAdmin() || isInvestor();
+      allow create, update: if isAdmin() && hasOperationalAuditFields();
+      allow delete: if isAdmin();
+    }
+
+    match /expenses/{recordId} {
+      allow read: if isAdmin() || isInvestor();
+      allow create, update: if isAdmin() && hasOperationalAuditFields();
+      allow delete: if isAdmin();
+    }
+
+    match /income/{recordId} {
+      allow read: if isAdmin() || isInvestor();
+      allow create, update: if isAdmin() && hasOperationalAuditFields();
+      allow delete: if isAdmin();
+    }
+
+    match /cashbook/{recordId} {
+      allow read: if isAdmin() || isInvestor();
+      allow create, update: if isAdmin() && hasOperationalAuditFields();
+      allow delete: if isAdmin();
+    }
+
+    match /bankbook/{recordId} {
+      allow read: if isAdmin() || isInvestor();
+      allow create, update: if isAdmin() && hasOperationalAuditFields();
+      allow delete: if isAdmin();
+    }
+
+    match /productionBatches/{recordId} {
+      allow read: if isAdmin() || isInvestor();
+      allow create, update: if isAdmin() && hasOperationalAuditFields();
+      allow delete: if isAdmin();
+    }
+
+    match /profitSharing/{recordId} {
+      allow read: if isAdmin() || isInvestor();
+      allow create, update: if isAdmin() && hasOperationalAuditFields();
+      allow delete: if isAdmin();
+    }
+
+    // Default deny: every production collection must be listed above.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -1,0 +1,1214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Dashboard - Lakfa ERP</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#0f766e">
+</head>
+<body>
+
+  <!-- Sidebar Backdrop (Mobile only) -->
+  <div id="sidebar-backdrop" class="sidebar-backdrop"></div>
+
+  <div class="app-wrapper">
+    <!-- Sidebar Navigation -->
+    <aside id="sidebar" class="sidebar">
+      <div class="sidebar-header">
+        <span class="sidebar-logo" data-company-name>Lakfa ERP</span>
+        <button id="sidebar-close" class="menu-toggle" style="font-size: 1.5rem; display: none;">&times;</button>
+      </div>
+      <nav class="sidebar-menu sidebar-accordion">
+        <a href="#" class="sidebar-item active" data-section="dashboard"><span class="icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9"></rect><rect x="14" y="3" width="7" height="5"></rect><rect x="14" y="12" width="7" height="9"></rect><rect x="3" y="16" width="7" height="5"></rect></svg></span> Dashboard</a>
+
+        <div class="sidebar-group expanded">
+          <button class="sidebar-group-toggle" type="button"><span>Order Management</span><span class="chevron">⌄</span></button>
+          <div class="sidebar-submenu">
+            <a href="#" class="sidebar-item" data-section="orders" data-order-view="pending"><span class="icon" data-icon="orders"></span> Orders</a>
+            <a href="#" class="sidebar-item" data-section="orders" data-order-view="payment-due"><span class="icon" data-icon="payment"></span> Payment Due</a>
+            <a href="#" class="sidebar-item" data-section="orders" data-order-view="promotions"><span class="icon" data-icon="tag"></span> Promotions</a>
+            <a href="#" class="sidebar-item" data-section="orders" data-order-view="returns"><span class="icon" data-icon="return"></span> Return</a>
+            <a href="#" class="sidebar-item" data-section="orders" data-order-view="cancelled"><span class="icon" data-icon="cancel"></span> Order Cancelled</a>
+            <a href="#" class="sidebar-item" data-section="orders" data-order-view="recycle-bin"><span class="icon" data-icon="trash"></span> Recycle Bin</a>
+          </div>
+        </div>
+
+        <div class="sidebar-group">
+          <button class="sidebar-group-toggle" type="button"><span>Parties</span><span class="chevron">⌄</span></button>
+          <div class="sidebar-submenu">
+            <a href="#" class="sidebar-item" data-section="customers"><span class="icon" data-icon="user"></span> Customers</a>
+            <a href="#" class="sidebar-item" data-section="suppliers"><span class="icon" data-icon="store"></span> Suppliers</a>
+            <a href="#" class="sidebar-item" data-section="investors"><span class="icon" data-icon="users"></span> Investors</a>
+          </div>
+        </div>
+
+        <div class="sidebar-group">
+          <button class="sidebar-group-toggle" type="button"><span>Inventory & Products</span><span class="chevron">⌄</span></button>
+          <div class="sidebar-submenu">
+            <a href="#" class="sidebar-item" data-section="products"><span class="icon" data-icon="box"></span> Products</a>
+            <a href="#" class="sidebar-item" data-section="inventory"><span class="icon" data-icon="inventory"></span> Inventory / Stock</a>
+            <a href="#" class="sidebar-item" data-section="production"><span class="icon" data-icon="production"></span> Production</a>
+          </div>
+        </div>
+
+        <div class="sidebar-group">
+          <button class="sidebar-group-toggle" type="button"><span>Sale</span><span class="chevron">⌄</span></button>
+          <div class="sidebar-submenu">
+            <a href="#" class="sidebar-item" data-section="sales"><span class="icon" data-icon="invoice"></span> Sale Invoices</a>
+            <a href="#" class="sidebar-item" data-section="sales"><span class="icon" data-icon="plus"></span> Estimate / Quotation</a>
+            <a href="#" class="sidebar-item" data-section="sales"><span class="icon" data-icon="plus"></span> Proforma Invoice</a>
+            <a href="#" class="sidebar-item" data-section="income"><span class="icon" data-icon="plus"></span> Payment-In / Other Income</a>
+            <a href="#" class="sidebar-item" data-section="orders" data-order-view="all"><span class="icon" data-icon="plus"></span> Sale Order</a>
+            <a href="#" class="sidebar-item" data-section="delivery"><span class="icon" data-icon="delivery"></span> Delivery Challan</a>
+          </div>
+        </div>
+
+        <div class="sidebar-group">
+          <button class="sidebar-group-toggle" type="button"><span>Purchase & Expense</span><span class="chevron">⌄</span></button>
+          <div class="sidebar-submenu">
+            <a href="#" class="sidebar-item" data-section="purchase"><span class="icon" data-icon="purchase"></span> Purchase Bills</a>
+            <a href="#" class="sidebar-item" data-section="expenses"><span class="icon" data-icon="expense"></span> Payment-Out / Expenses</a>
+          </div>
+        </div>
+
+        <div class="sidebar-group">
+          <button class="sidebar-group-toggle" type="button"><span>Cash, Bank & Assets</span><span class="chevron">⌄</span></button>
+          <div class="sidebar-submenu">
+            <a href="#" class="sidebar-item" data-section="bankbook"><span class="icon" data-icon="bank"></span> Bank Accounts</a>
+            <a href="#" class="sidebar-item" data-section="cashbook"><span class="icon" data-icon="cash"></span> Cash In Hand</a>
+          </div>
+        </div>
+
+        <div class="sidebar-group">
+          <button class="sidebar-group-toggle" type="button"><span>Accounting</span><span class="chevron">⌄</span></button>
+          <div class="sidebar-submenu">
+            <a href="#" class="sidebar-item" data-section="accounting"><span class="icon" data-icon="accounting"></span> Accounting Summary</a>
+            <a href="#" class="sidebar-item" data-section="reports"><span class="icon" data-icon="report"></span> Reports</a>
+            <a href="#" class="sidebar-item" data-section="gstreports"><span class="icon" data-icon="gst"></span> GST Reports</a>
+          </div>
+        </div>
+
+        <a href="#" class="sidebar-item" data-section="investment-sharing"><span class="icon" data-icon="share"></span> Profit Sharing</a>
+        <a href="#" class="sidebar-item" data-section="company"><span class="icon" data-icon="company"></span> Company Profile</a>
+        <a href="#" class="sidebar-item" data-section="settings"><span class="icon" data-icon="settings"></span> Settings</a>
+        <hr style="margin: 0.5rem 0; border: 0; border-top: 1px solid var(--border);">
+        <a href="#" id="logout-btn" class="sidebar-item" style="color: var(--danger);"><span class="icon" style="color: var(--danger);"><svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg></span> Logout</a>
+      </nav>
+    </aside>
+
+    <!-- Main Workspace Area -->
+    <main class="main-content">
+      <!-- Top Header -->
+      <header class="top-header">
+        <div class="header-title-section">
+          <button id="menu-toggle" class="menu-toggle" aria-label="Open menu"><svg viewBox="0 0 24 24"><line x1="4" y1="6" x2="20" y2="6"></line><line x1="4" y1="12" x2="20" y2="12"></line><line x1="4" y1="18" x2="20" y2="18"></line></svg></button>
+          <span id="header-page-title" class="header-page-title">Admin Dashboard</span>
+        </div>
+        <div class="header-user-section">
+          <button id="module-settings-btn" class="icon-button" type="button" title="Current tab settings" aria-label="Current tab settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 8a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 8.92 3a1.65 1.65 0 0 0 1-1.51V1a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 8c.36.31.85.5 1.38.5H21a2 2 0 1 1 0 4h-.09c-.53 0-1.02.19-1.38.5z"></path></svg></button>
+          <span id="header-user-role" class="badge badge-success">Admin / Manager</span>
+          <div class="user-info">
+            <span id="header-user-name" class="user-name">Loading...</span>
+            <span id="header-user-email" class="user-email">email@lakfa.com</span>
+          </div>
+        </div>
+      </header>
+
+      <!-- Workspace Screen Containers -->
+      <div class="workspace">
+
+        <!-- ================= DASHBOARD MODULE ================= -->
+        <section id="section-dashboard" class="app-section active">
+          <div class="section-header">
+            <h1 class="section-title"><span data-company-name>Lakfa ERP</span> Performance Dashboard</h1>
+            <span style="font-size: 0.875rem; color: var(--text-muted);">Real-time Operations Ledger</span>
+          </div>
+          
+          <!-- Key Metrics Grid -->
+          <div class="dashboard-grid">
+            <div class="dashboard-card">
+              <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                <span>Today's Sales</span>
+                <span class="icon"><svg viewBox="0 0 24 24"><path d="M6 3h12M6 8h12M14.5 8A5.5 5.5 0 0 0 9 13.5M9 13.5h9M9 13.5L16 21"></path></svg></span>
+              </div>
+              <div id="dash-sales" class="card-value">₹0.00</div>
+              <div class="card-footer">Invoiced sales today</div>
+            </div>
+            <div class="dashboard-card">
+              <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                <span>Today's Expenses</span>
+                <span class="icon"><svg viewBox="0 0 24 24"><line x1="17" y1="7" x2="7" y2="17"></line><polyline points="17 17 7 17 7 7"></polyline></svg></span>
+              </div>
+              <div id="dash-expenses" class="card-value">₹0.00</div>
+              <div class="card-footer">Operating payouts today</div>
+            </div>
+            <div class="dashboard-card">
+              <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                <span>Cash Book Balance</span>
+                <span class="icon"><svg viewBox="0 0 24 24"><path d="M21 12V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3"></path></svg></span>
+              </div>
+              <div id="dash-cash" class="card-value">₹0.00</div>
+              <div class="card-footer">Liquidity on-hand</div>
+            </div>
+            <div class="dashboard-card">
+              <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                <span>Bank Ledger Balance</span>
+                <span class="icon"><svg viewBox="0 0 24 24"><path d="M3 21h18M3 10h18M3 10l9-7 9 7M4 10v11M20 10v11M8 14v3M12 14v3M16 14v3"></path></svg></span>
+              </div>
+              <div id="dash-bank" class="card-value">₹0.00</div>
+              <div class="card-footer">Federal Bank balance</div>
+            </div>
+            <div class="dashboard-card">
+              <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                <span>Pending Orders</span>
+                <span class="icon"><svg viewBox="0 0 24 24"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect></svg></span>
+              </div>
+              <div id="dash-orders" class="card-value">0</div>
+              <div class="card-footer">In queue for fulfillment</div>
+            </div>
+            <div class="dashboard-card" style="border-left: 4px solid var(--danger);">
+              <div class="card-header" style="color: var(--danger); display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                <span>Stock Alerts</span>
+                <span class="icon" style="color: var(--danger);"><svg viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12" y2="17"></line></svg></span>
+              </div>
+              <div id="dash-alerts" class="card-value" style="color: var(--danger);">0</div>
+              <div class="card-footer" style="color: var(--danger);">Products below min stock</div>
+            </div>
+            <div class="dashboard-card">
+              <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                <span>Production Batches</span>
+                <span class="icon"><svg viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg></span>
+              </div>
+              <div id="dash-production" class="card-value">0</div>
+              <div class="card-footer">Processed food batches</div>
+            </div>
+            <div class="dashboard-card">
+              <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                <span>Investor Summary</span>
+                <span class="icon"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg></span>
+              </div>
+              <div id="dash-investor" class="card-value">₹0.00</div>
+              <div class="card-footer">Total venture capital pool</div>
+            </div>
+          </div>
+
+          <div class="alert alert-info" style="margin-top: 2rem; display: flex; align-items: flex-start; gap: 0.5rem;">
+            <span class="icon" aria-hidden="true" style="color: var(--info); margin-top: 2px;"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12" y2="8"></line></svg></span>
+            <div>
+              <strong>Pro Tip:</strong> All entries made under forms automatically recompute values, calculate taxes, track inventories, compile stock alerts, and append corresponding double-entry cash flow transactions on the fly.
+            </div>
+          </div>
+        </section>
+
+        <!-- ================= COMPANY PROFILE MODULE ================= -->
+        <section id="section-company" class="app-section">
+          <div class="card" style="max-width: 900px; margin: 0 auto;">
+            <div class="card-title">Company Profile & Branding</div>
+            <form id="company-profile-form" data-firestore-write="companyProfile">
+              <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1.5rem;">
+                <img id="company-logo-preview" data-company-logo hidden alt="Company logo preview" style="width: 72px; height: 72px; object-fit: contain; border: 1px solid var(--border); border-radius: 12px; padding: 0.35rem; background: #fff;">
+                <div>
+                  <h2 data-company-name style="color: var(--primary); margin: 0;">Lakfa ERP</h2>
+                  <p style="color: var(--text-muted); font-size: 0.875rem; margin-top: 0.25rem;">Saved in Firebase: settings/companyProfile</p>
+                </div>
+              </div>
+
+              <div class="form-grid-2">
+                <div class="form-group"><label>Company Name</label><input name="companyName" class="form-control" required placeholder="Company legal/trade name"></div>
+                <div class="form-group"><label>GST Number</label><input name="gst" class="form-control" placeholder="GSTIN"></div>
+              </div>
+              <div class="form-group"><label>Address</label><textarea name="address" class="form-control" rows="3" placeholder="Registered/business address"></textarea></div>
+              <div class="form-grid-3" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.75rem;">
+                <div class="form-group"><label>State</label><input name="state" class="form-control" placeholder="State"></div>
+                <div class="form-group"><label>Pincode</label><input name="pincode" class="form-control" placeholder="PIN code"></div>
+                <div class="form-group"><label>Business Type</label><input name="businessType" class="form-control" placeholder="Manufacturer, Trader, etc."></div>
+              </div>
+              <div class="form-grid-2">
+                <div class="form-group"><label>Business Category</label><input name="businessCategory" class="form-control" placeholder="Food, spices, retail, etc."></div>
+                <div class="form-group"><label>Website Link</label><input name="website" type="url" class="form-control" placeholder="https://example.com"></div>
+              </div>
+              <div class="form-grid-2">
+                <div class="form-group"><label>Phone Number</label><input name="phone" class="form-control" placeholder="Company phone"></div>
+                <div class="form-group"><label>Email</label><input name="email" type="email" class="form-control" placeholder="company@example.com"></div>
+              </div>
+              <div class="form-group"><label>Social Media Links</label><textarea name="socialLinks" class="form-control" rows="2" placeholder="Instagram, Facebook, YouTube, LinkedIn links"></textarea></div>
+              <div class="form-grid-2">
+                <div class="form-group">
+                  <label>Company Logo</label>
+                  <input id="company-logo-file" name="logoFile" type="file" class="form-control" accept="image/*">
+                  <textarea name="logoDataUrl" class="form-control" rows="2" readonly placeholder="Compressed logo text will be saved in Firestore" style="margin-top: 0.5rem;"></textarea>
+                  <small id="company-logo-status" style="color: var(--text-muted); display: block; margin-top: 0.35rem;">No Firestore image saved yet.</small>
+                </div>
+                <div class="form-group">
+                  <label>Signature Logo</label>
+                  <input id="company-signature-logo-file" name="signatureLogoFile" type="file" class="form-control" accept="image/*">
+                  <textarea name="signatureDataUrl" class="form-control" rows="2" readonly placeholder="Compressed signature text will be saved in Firestore" style="margin-top: 0.5rem;"></textarea>
+                  <small id="company-signature-logo-status" style="color: var(--text-muted); display: block; margin-top: 0.35rem;">No Firestore image saved yet.</small>
+                  <img id="company-signature-logo-preview" hidden alt="Signature preview" style="max-height: 72px; max-width: 180px; object-fit: contain; margin-top: 0.5rem; border: 1px solid var(--border); border-radius: 8px; padding: 0.35rem; background: #fff;">
+                </div>
+              </div>
+              <button type="submit" class="btn-primary" style="width: 100%; margin-top: 1rem;">Save Company Profile to Firebase</button>
+            </form>
+          </div>
+        </section>
+
+        <!-- ================= PRODUCTS MODULE ================= -->
+        <section id="section-products" class="app-section">
+          <div class="section-header">
+            <h2 class="section-title">Products Master Ledger</h2>
+          </div>
+          <div class="search-filter-bar">
+            <input type="text" id="search-products" class="form-control search-box" placeholder="Search by name, SKU, category...">
+          </div>
+          <div class="module-layout">
+            <div class="card">
+              <div class="card-title">Add / Update Product</div>
+              <form id="product-form">
+                <div class="form-group"><label>Product Name</label><input type="text" id="prod-name" class="form-control" required placeholder="e.g. Rice Powder 1kg"></div>
+                <div class="form-group"><label>SKU (Stock Keeping Unit)</label><input type="text" id="prod-sku" class="form-control" required placeholder="LGRP-1000"></div>
+                <div class="form-group">
+                  <label>Category</label>
+                  <select id="prod-category" class="form-control">
+                    <option>Spices</option><option>Masala</option><option>Flour</option><option>Rice</option><option>Other</option>
+                  </select>
+                </div>
+                <div class="form-grid-2">
+                  <div class="form-group"><label>Unit</label><input type="text" id="prod-unit" class="form-control" required placeholder="Pkt, Kg, Pcs"></div>
+                  <div class="form-group"><label>MRP (₹)</label><input type="number" id="prod-mrp" class="form-control" step="0.01" required></div>
+                </div>
+                <div class="form-grid-2">
+                  <div class="form-group"><label>Sale Price (₹)</label><input type="number" id="prod-saleprice" class="form-control" step="0.01" required></div>
+                  <div class="form-group"><label>Cost Price (₹)</label><input type="number" id="prod-costprice" class="form-control" step="0.01" required></div>
+                </div>
+                <div class="form-grid-3" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.5rem;">
+                  <div class="form-group"><label>Opening Stock</label><input type="number" id="prod-opening" class="form-control" required></div>
+                  <div class="form-group"><label>Current Stock</label><input type="number" id="prod-current" class="form-control" required></div>
+                  <div class="form-group"><label>Minimum Level</label><input type="number" id="prod-minimum" class="form-control" required></div>
+                </div>
+                <div class="form-group">
+                  <label>Status</label>
+                  <select id="prod-status" class="form-control"><option>Active</option><option>Inactive</option></select>
+                </div>
+                <button type="submit" id="product-submit-btn" class="btn-primary submit-btn" style="width: 100%;">Save Record</button>
+              </form>
+            </div>
+            <div class="table-responsive">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Product</th><th>SKU</th><th>Category</th><th>Unit</th><th>MRP</th><th>Sale Price</th><th>Cost Price</th><th>Stock (Curr/Min)</th><th>Status</th><th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="products-table-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ================= CUSTOMERS MODULE ================= -->
+        <section id="section-customers" class="app-section">
+          <div class="section-header"><h2 class="section-title">Customers Register</h2></div>
+          <div class="search-filter-bar">
+            <input type="text" id="search-customers" class="form-control search-box" placeholder="Search customer by name, location, phone...">
+          </div>
+          <div class="module-layout">
+            <div class="card">
+              <div class="card-title">Add / Update Customer</div>
+              <form id="customer-form">
+                <div class="form-group"><label>Customer Name</label><input type="text" id="cust-name" class="form-control" required></div>
+                <div class="form-grid-2">
+                  <div class="form-group"><label>Phone Number</label><input type="tel" id="cust-phone" class="form-control" required></div>
+                  <div class="form-group"><label>WhatsApp Number</label><input type="tel" id="cust-whatsapp" class="form-control"></div>
+                </div>
+                <div class="form-grid-2">
+                  <div class="form-group"><label>City / Place</label><input type="text" id="cust-place" class="form-control" required></div>
+                  <div class="form-group"><label>Pincode</label><input type="text" id="cust-pin" class="form-control" required></div>
+                </div>
+                <div class="form-group"><label>Full Delivery Address</label><textarea id="cust-address" class="form-control" rows="2" required></textarea></div>
+                <div class="form-group">
+                  <label>Customer Type</label>
+                  <select id="cust-type" class="form-control">
+                    <option>Retail Customer</option><option>Wholesale Customer</option><option>Distributor</option><option>Online Customer</option>
+                  </select>
+                </div>
+                <div class="form-group"><label>Additional Notes</label><input type="text" id="cust-notes" class="form-control"></div>
+                <button type="submit" id="customer-submit-btn" class="btn-primary submit-btn" style="width: 100%;">Save Record</button>
+              </form>
+            </div>
+            <div class="table-responsive">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Customer Info</th><th>Contact Details</th><th>Place</th><th>Address</th><th>Pin</th><th>Type</th><th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="customers-table-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ================= SUPPLIERS MODULE ================= -->
+        <section id="section-suppliers" class="app-section">
+          <div class="section-header"><h2 class="section-title">Suppliers Directory</h2></div>
+          <div class="module-layout">
+            <div class="card">
+              <div class="card-title">Add / Update Supplier</div>
+              <form id="supplier-form">
+                <div class="form-group"><label>Supplier Name</label><input type="text" id="supp-name" class="form-control" required></div>
+                <div class="form-grid-2">
+                  <div class="form-group"><label>Phone Number</label><input type="tel" id="supp-phone" class="form-control" required></div>
+                  <div class="form-group"><label>Place / City</label><input type="text" id="supp-place" class="form-control" required></div>
+                </div>
+                <div class="form-group"><label>Full Address</label><input type="text" id="supp-address" class="form-control" required></div>
+                <div class="form-group"><label>GST Number (Optional)</label><input type="text" id="supp-gst" class="form-control" placeholder="32AAAAA0000A1Z0"></div>
+                <div class="form-group"><label>Item / Material Supplied</label><input type="text" id="supp-item" class="form-control" placeholder="e.g. Raw Rice, Cardamom" required></div>
+                <div class="form-group">
+                  <label>Payment Terms</label>
+                  <select id="supp-terms" class="form-control">
+                    <option>Cash On Delivery</option><option>7 Days Credit</option><option>15 Days Credit</option><option>30 Days Credit</option>
+                  </select>
+                </div>
+                <div class="form-group"><label>Notes</label><input type="text" id="supp-notes" class="form-control"></div>
+                <button type="submit" id="supplier-submit-btn" class="btn-primary submit-btn" style="width: 100%;">Save Record</button>
+              </form>
+            </div>
+            <div class="table-responsive">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Supplier</th><th>Phone</th><th>Place</th><th>GSTIN</th><th>Supplies</th><th>Terms</th><th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="suppliers-table-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ================= PURCHASE MODULE ================= -->
+        <section id="section-purchase" class="app-section">
+          <div class="section-header"><h2 class="section-title">Raw Material Purchases</h2></div>
+          <div class="module-layout">
+            <div class="card">
+              <div class="card-title">Log Purchase Invoice</div>
+              <form id="purchase-form">
+                <div class="form-grid-2">
+                  <div class="form-group"><label>Purchase Date</label><input type="date" id="pur-date" class="form-control" required></div>
+                  <div class="form-group"><label>Invoice Number</label><input type="text" id="pur-invoice" class="form-control" required></div>
+                </div>
+                <div class="form-group"><label>Supplier Name</label><input type="text" id="pur-supplier" class="form-control" placeholder="Select or type supplier" required></div>
+                <div class="form-group"><label>Item Name</label><input type="text" id="pur-item" class="form-control" required></div>
+                <div class="form-grid-3" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.5rem;">
+                  <div class="form-group"><label>Quantity</label><input type="number" id="pur-qty" class="form-control" required></div>
+                  <div class="form-group"><label>Unit</label><input type="text" id="pur-unit" class="form-control" required placeholder="Kg, Ton, Pcs"></div>
+                  <div class="form-group"><label>Rate (₹)</label><input type="number" id="pur-rate" class="form-control" step="0.01" required></div>
+                </div>
+                <div class="form-group"><label>Total Amount (₹ - Auto)</label><input type="number" id="pur-total" class="form-control" readonly style="background-color: #f1f5f9;"></div>
+                <div class="form-grid-2">
+                  <div class="form-group">
+                    <label>Payment Mode</label>
+                    <select id="pur-mode" class="form-control">
+                      <option>Bank</option><option>Cash</option><option>UPI</option><option>Card</option><option>Credit</option>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label>Payment Status</label>
+                    <select id="pur-status" class="form-control">
+                      <option>Paid</option><option>Pending</option><option>Partial</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="form-group"><label>Remarks</label><input type="text" id="pur-notes" class="form-control"></div>
+                <button type="submit" id="purchase-submit-btn" class="btn-primary submit-btn" style="width: 100%;">Save Record</button>
+              </form>
+            </div>
+            <div class="table-responsive">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Date</th><th>Supplier / Invoice</th><th>Item Name</th><th>Qty / Unit</th><th>Rate</th><th>Total</th><th>Payment Mode</th><th>Status</th><th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="purchase-table-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ================= INVENTORY / STOCK MODULE ================= -->
+        <section id="section-inventory" class="app-section">
+          <div class="section-header"><h2 class="section-title">Inventory & Stock Cards</h2></div>
+          <div class="module-layout">
+            <div class="card">
+              <div class="card-title">Manage Stock Item</div>
+              <form id="inventory-form">
+                <div class="form-group"><label>Material / Item Name</label><input type="text" id="stk-name" class="form-control" required></div>
+                <div class="form-grid-2">
+                  <div class="form-group"><label>Category</label><input type="text" id="stk-category" class="form-control" required placeholder="e.g. Spices, Packing"></div>
+                  <div class="form-group">
+                    <label>Stock Type</label>
+                    <select id="stk-type" class="form-control">
+                      <option>Raw Material</option><option>Finished Product</option><option>Packing Material</option><option>Office Material</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="form-grid-3" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.5rem;">
+                  <div class="form-group"><label>Opening Stock</label><input type="number" id="stk-opening" class="form-control" required></div>
+                  <div class="form-group"><label>Stock In (+)</label><input type="number" id="stk-in" class="form-control" required></div>
+                  <div class="form-group"><label>Stock Out (-)</label><input type="number" id="stk-out" class="form-control" required></div>
+                </div>
+                <div class="form-grid-3" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.5rem;">
+                  <div class="form-group"><label>Current Stock</label><input type="number" id="stk-current" class="form-control" required></div>
+                  <div class="form-group"><label>Unit Measure</label><input type="text" id="stk-unit" class="form-control" required placeholder="Kg, Pcs"></div>
+                  <div class="form-group"><label>Min Alert Level</label><input type="number" id="stk-min" class="form-control" required></div>
+                </div>
+                <div class="form-group"><label>Last Updated Date</label><input type="date" id="stk-date" class="form-control" required></div>
+                <button type="submit" id="inventory-submit-btn" class="btn-primary submit-btn" style="width: 100%;">Save Record</button>
+              </form>
+            </div>
+            <div class="table-responsive">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Item Name</th><th>Type</th><th>Opening</th><th>Stock In</th><th>Stock Out</th><th>Current Stock</th><th>Min Alert</th><th>Last Updated</th><th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="inventory-table-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ================= PRODUCTION MODULE ================= -->
+        <section id="section-production" class="app-section">
+          <div class="section-header"><h2 class="section-title">Production Batches & Yields</h2></div>
+          <div class="module-layout">
+            <div class="card">
+              <div class="card-title">Log Production Batch</div>
+              <form id="production-form">
+                <div class="form-grid-2">
+                  <div class="form-group"><label>Batch Number</label><input type="text" id="prod-batch" class="form-control" required placeholder="e.g. B-RICE-09"></div>
+                  <div class="form-group"><label>Production Date</label><input type="date" id="prod-date" class="form-control" required></div>
+                </div>
+                <div class="form-group"><label>Finished Product Produced</label><input type="text" id="prod-pname" class="form-control" placeholder="Lakfa Ghee Rice Powder" required></div>
+                <div class="form-group"><label>Raw Material Used (Qty / Name)</label><input type="text" id="prod-raw" class="form-control" placeholder="e.g. Raw Rice 500Kg" required></div>
+                <div class="form-grid-3" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.5rem;">
+                  <div class="form-group"><label>Quantity Produced</label><input type="number" id="prod-qty" class="form-control" required></div>
+                  <div class="form-group"><label>Packing Quantity</label><input type="text" id="prod-pack" class="form-control" placeholder="e.g. 500 packets" required></div>
+                  <div class="form-group"><label>Wastage Quantity</label><input type="text" id="prod-waste" class="form-control" placeholder="e.g. 2 Kg" required></div>
+                </div>
+                <div class="form-grid-2">
+                  <div class="form-group"><label>Total Batch Cost (₹)</label><input type="number" id="prod-cost" class="form-control" step="0.01" required></div>
+                  <div class="form-group"><label>Supervisor / Staff</label><input type="text" id="prod-staff" class="form-control" required></div>
+                </div>
+                <div class="form-group"><label>Production Notes</label><input type="text" id="prod-notes" class="form-control"></div>
+                <button type="submit" id="production-submit-btn" class="btn-primary submit-btn" style="width: 100%;">Save Record</button>
+              </form>
+            </div>
+            <div class="table-responsive">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Batch / Date</th><th>Product Name</th><th>Raw Materials</th><th>Qty Produced</th><th>Packing Qty</th><th>Wastage</th><th>Batch Cost</th><th>Staff</th><th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="production-table-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ================= SALES MODULE ================= -->
+        <section id="section-sales" class="app-section">
+          <div class="section-header"><h2 class="section-title">Sales Dispatch Ledger</h2></div>
+          <div class="module-layout">
+            <div class="card">
+              <div class="card-title">Log Sales Outflow</div>
+              <form id="sales-form">
+                <div class="form-group"><label>Sales Date</label><input type="date" id="sale-date" class="form-control" required></div>
+                <div class="form-group"><label>Customer Name</label><input type="text" id="sale-customer" class="form-control" required></div>
+                <div class="form-group"><label>Product Name</label><input type="text" id="sale-product" class="form-control" required></div>
+                <div class="form-grid-2">
+                  <div class="form-group"><label>Quantity Sold</label><input type="number" id="sale-qty" class="form-control" required></div>
+                  <div class="form-group"><label>Unit Sale Rate (₹)</label><input type="number" id="sale-rate" class="form-control" step="0.01" required></div>
+                </div>
+                <div class="form-grid-3" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.5rem;">
+                  <div class="form-group"><label>Total Amount (₹)</label><input type="number" id="sale-total" class="form-control" readonly style="background-color: #f1f5f9;"></div>
+                  <div class="form-group"><label>Discount (₹)</label><input type="number" id="sale-discount" class="form-control" step="0.01" value="0" required></div>
+                  <div class="form-group"><label>Final Amount (₹)</label><input type="number" id="sale-final" class="form-control" readonly style="background-color: #f1f5f9;"></div>
+                </div>
+                <div class="form-grid-2">
+                  <div class="form-group">
+                    <label>Payment Mode</label>
+                    <select id="sale-mode" class="form-control">
+                      <option>UPI</option><option>Cash</option><option>Bank</option><option>Card</option><option>COD</option>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label>Payment Status</label>
+                    <select id="sale-status" class="form-control">
+                      <option>Paid</option><option>Pending</option><option>Partial</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="form-group"><label>Notes</label><input type="text" id="sale-notes" class="form-control"></div>
+                <button type="submit" id="sales-submit-btn" class="btn-primary submit-btn" style="width: 100%;">Save Record</button>
+              </form>
+            </div>
+            <div class="table-responsive">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Date</th><th>Customer</th><th>Product</th><th>Qty × Rate</th><th>Gross Total</th><th>Discount</th><th>Net Receivable</th><th>Status</th><th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="sales-table-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ================= ORDERS MODULE ================= -->
+        <section id="section-orders" class="app-section">
+          <div class="section-header order-page-header">
+            <h2 class="section-title">Order Management</h2>
+            <button type="button" id="open-order-modal-btn" class="btn-primary">+ Add New Order</button>
+          </div>
+
+          <div class="order-status-tabs" role="tablist" aria-label="Order status filters">
+            <button type="button" class="order-tab active" data-order-tab="pending">Pending</button>
+            <button type="button" class="order-tab" data-order-tab="processing">Processing</button>
+            <button type="button" class="order-tab" data-order-tab="shipped">Shipped</button>
+            <button type="button" class="order-tab" data-order-tab="delivered">Delivered</button>
+            <button type="button" class="order-tab" data-order-tab="all">All Orders</button>
+            <button type="button" class="order-tab" data-order-tab="promotions">Promotions</button>
+          </div>
+
+          <div id="order-payment-due-filters" class="order-due-filters" hidden>
+            <strong>Filter Due by Status</strong>
+            <button type="button" class="due-filter active" data-due-filter="all">All Due</button>
+            <button type="button" class="due-filter" data-due-filter="pending">Pending</button>
+            <button type="button" class="due-filter" data-due-filter="processing">Processing</button>
+            <button type="button" class="due-filter" data-due-filter="shipped">Shipped</button>
+            <button type="button" class="due-filter" data-due-filter="delivered">Delivered</button>
+          </div>
+
+          <div class="order-filter-bar">
+            <div class="form-group"><label>Search</label><input type="search" id="orders-search" class="form-control" placeholder="Name or Phone..."></div>
+            <div class="form-group"><label>From Date</label><input type="date" id="orders-from-date" class="form-control"></div>
+            <div class="form-group"><label>To Date</label><input type="date" id="orders-to-date" class="form-control"></div>
+          </div>
+
+          <div id="order-bulk-actions" class="order-bulk-actions" hidden>
+            <strong><span id="selected-orders-count">0</span> selected</strong>
+            <button type="button" id="bulk-restore-orders" class="btn-secondary btn-sm">Restore</button>
+            <button type="button" id="bulk-permanent-delete-orders" class="btn-danger btn-sm">Permanent Delete</button>
+          </div>
+
+          <div class="table-responsive order-table-wrap">
+            <table class="orders-screen-table">
+              <thead>
+                <tr>
+                  <th><input type="checkbox" id="orders-select-all" aria-label="Select all visible orders"></th>
+                  <th>Date</th><th>Contact</th><th>Items</th><th>Status</th><th>Expense</th><th>Payment</th><th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="orders-table-body"></tbody>
+            </table>
+          </div>
+
+          <div id="order-modal" class="modal-overlay" hidden>
+            <div class="modal-card order-modal-card">
+              <div class="modal-header">
+                <h3>Add New Order</h3>
+                <button type="button" id="close-order-modal-btn" class="icon-button" aria-label="Close order form">×</button>
+              </div>
+              <form id="orders-form">
+                <div class="form-grid-2">
+                  <div class="form-group"><label>Date</label><input type="date" id="ord-date" class="form-control" required></div>
+                  <div class="form-group"><label>Status</label><select id="ord-ostatus" class="form-control"><option>Pending</option><option>Processing</option><option>Shipped</option><option>Delivered</option><option>Cancelled</option><option>Returned</option></select></div>
+                </div>
+                <hr class="modal-divider">
+                <h4>Customer Details</h4>
+                <div class="form-grid-2">
+                  <div class="form-group"><label>Phone</label><input type="tel" id="ord-phone" class="form-control" required placeholder="Type phone to find repeat customers"></div>
+                  <div class="form-group"><label>Name</label><input type="text" id="ord-customer" class="form-control" required></div>
+                  <div class="form-group"><label>GST Number (Optional)</label><input type="text" id="ord-gst" class="form-control"></div>
+                  <div class="form-group"><label>Shop Name (Optional)</label><input type="text" id="ord-shop" class="form-control"></div>
+                  <div class="form-group"><label>Landmark (Optional)</label><input type="text" id="ord-landmark" class="form-control"></div>
+                  <div class="form-group"><label>Pincode</label><input type="text" id="ord-pin" class="form-control"></div>
+                </div>
+                <div class="form-group"><label>Full Address</label><textarea id="ord-address" class="form-control" rows="2" required></textarea></div>
+                <div class="form-group"><label>Location Link (Optional)</label><input type="url" id="ord-location" class="form-control"></div>
+                <hr class="modal-divider">
+                <div class="order-items-title-row">
+                  <h4>Order Items</h4>
+                  <button type="button" id="add-order-item-btn" class="btn-secondary btn-sm">+ Add Item</button>
+                </div>
+                <div id="order-items-container" class="order-items-container"></div>
+                <template id="order-item-template">
+                  <div class="order-item-row" data-order-item-row>
+                    <div class="form-group"><label>Product</label><select class="form-control order-product" required></select><small class="stock-availability">Stock: -</small></div>
+                    <div class="form-group"><label>Price Type</label><select class="form-control order-price-type"><option value="with-gst">Including GST</option><option value="without-gst">Without GST</option><option value="promotion">Promotion / Free</option><option value="custom">Custom Amount</option></select></div>
+                    <div class="form-group"><label>Qty</label><input type="number" class="form-control order-qty" min="1" value="1" required></div>
+                    <div class="form-group"><label>Amount ₹</label><input type="number" class="form-control order-amount" step="0.01" required></div>
+                    <div class="form-group"><label>&nbsp;</label><button type="button" class="btn-danger btn-sm remove-order-item-btn">Remove</button></div>
+                  </div>
+                </template>
+                <div class="form-grid-2">
+                  <div class="form-group"><label>Delivery / Expense ₹</label><input type="number" id="ord-delivery" class="form-control" step="0.01" value="0"></div>
+                  <div class="form-group"><label>Total Payable ₹</label><input type="number" id="ord-payable" class="form-control" readonly></div>
+                </div>
+                <hr class="modal-divider">
+                <h4>Payment Details</h4>
+                <div class="form-grid-3">
+                  <div class="form-group"><label>First Payment ₹</label><input type="number" id="ord-paid" class="form-control" step="0.01" value="0"></div>
+                  <div class="form-group"><label>Payment Mode</label><select id="ord-payment-mode" class="form-control"><option>Cash</option><option>UPI</option><option>Bank</option><option>Card</option></select></div>
+                  <div class="form-group"><label>Payment Status</label><select id="ord-pstatus" class="form-control"><option>Pending</option><option>Partial</option><option>Paid</option><option>Advance Credit</option></select></div>
+                </div>
+                <div id="order-credit-note" class="alert alert-info" hidden></div>
+                <input type="hidden" id="ord-source" value="Direct">
+                <div class="form-group"><label>Notes</label><input type="text" id="ord-notes" class="form-control"></div>
+                <div class="modal-footer">
+                  <button type="button" id="cancel-order-modal-btn" class="btn-secondary">Cancel</button>
+                  <button type="submit" id="orders-submit-btn" class="btn-primary submit-btn">Save Order</button>
+                </div>
+              </form>
+            </div>
+          </div>
+
+          <div id="order-payment-modal" class="modal-overlay" hidden>
+            <div class="modal-card order-payment-modal-card">
+              <div class="modal-header">
+                <h3>Update Order Payment</h3>
+                <button type="button" id="close-order-payment-modal-btn" class="icon-button" aria-label="Close payment form">×</button>
+              </div>
+              <form id="order-payment-form">
+                <input type="hidden" id="pay-order-id">
+                <div class="form-grid-2">
+                  <div class="form-group"><label>Total Payable ₹</label><input type="number" id="pay-total" class="form-control" readonly></div>
+                  <div class="form-group"><label>Current Paid ₹</label><input type="number" id="pay-current-paid" class="form-control" readonly></div>
+                </div>
+                <div class="form-grid-2">
+                  <div class="form-group"><label>Add / Set Paid Amount ₹</label><input type="number" id="pay-paid-amount" class="form-control" step="0.01" min="0" required></div>
+                  <div class="form-group"><label>Payment Mode</label><select id="pay-mode" class="form-control"><option>Cash</option><option>UPI</option><option>Bank</option><option>Card</option></select></div>
+                </div>
+                <div class="form-grid-2">
+                  <div class="form-group"><label>Payment Status</label><select id="pay-status" class="form-control"><option>Pending</option><option>Partial</option><option>Paid</option><option>Advance Credit</option></select></div>
+                  <div class="form-group"><label>Balance Due ₹</label><input type="number" id="pay-balance" class="form-control" readonly></div>
+                </div>
+                <div id="pay-credit-note" class="alert alert-info" hidden></div>
+                <div class="modal-footer">
+                  <button type="button" id="cancel-order-payment-modal-btn" class="btn-secondary">Cancel</button>
+                  <button type="submit" class="btn-primary">Save Payment</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </section>
+
+        <!-- ================= DELIVERY / COURIER MODULE ================= -->
+        <section id="section-delivery" class="app-section">
+          <div class="section-header"><h2 class="section-title">Delivery & Courier Dispatch</h2></div>
+          <div class="module-layout">
+            <div class="card">
+              <div class="card-title">Dispatch Details</div>
+              <form id="delivery-form">
+                <div class="form-grid-2">
+                  <div class="form-group"><label>Order ID Reference</label><input type="text" id="dlv-order" class="form-control" placeholder="ORD-XXXXX" required></div>
+                  <div class="form-group"><label>Customer Name</label><input type="text" id="dlv-customer" class="form-control" required></div>
+                </div>
+                <div class="form-grid-2">
+                  <div class="form-group">
+                    <label>Courier Partner</label>
+                    <select id="dlv-partner" class="form-control">
+                      <option>DTDC</option><option>Speed Post</option><option>India Post</option><option>Other</option>
+                    </select>
+                  </div>
+                  <div class="form-group"><label>Tracking ID / Waybill</label><input type="text" id="dlv-tracking" class="form-control"></div>
+                </div>
+                <div class="form-grid-2">
+                  <div class="form-group"><label>Shipping Charge (₹)</label><input type="number" id="dlv-charge" class="form-control" step="0.01" required></div>
+                  <div class="form-group"><label>Dispatch Date</label><input type="date" id="dlv-dispatch" class="form-control" required></div>
+                </div>
+                <div class="form-grid-2">
+                  <div class="form-group">
+                    <label>Delivery Status</label>
+                    <select id="dlv-status" class="form-control">
+                      <option>Packing</option><option>Dispatched</option><option>In Transit</option><option>Delivered</option><option>Returned</option><option>Cancelled</option>
+                    </select>
+                  </div>
+                  <div class="form-group"><label>Delivered Date</label><input type="date" id="dlv-delivered" class="form-control"></div>
+                </div>
+                <div class="form-group"><label>Courier Notes</label><input type="text" id="dlv-notes" class="form-control"></div>
+                <button type="submit" id="delivery-submit-btn" class="btn-primary submit-btn" style="width: 100%;">Save Record</button>
+              </form>
+            </div>
+            <div class="table-responsive">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Order ID</th><th>Customer Name</th><th>Courier Partner / Tracking</th><th>Shipping Fee</th><th>Dispatch Date</th><th>Fulfillment Status</th><th>Delivered Date</th><th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="delivery-table-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ================= EXPENSES MODULE ================= -->
+        <section id="section-expenses" class="app-section">
+          <div class="section-header"><h2 class="section-title">Expense Outflow Ledger</h2></div>
+          <div class="module-layout">
+            <div class="card">
+              <div class="card-title">Record Expense</div>
+              <form id="expenses-form">
+                <div class="form-grid-2">
+                  <div class="form-group"><label>Expense Date</label><input type="date" id="exp-date" class="form-control" required></div>
+                  <div class="form-group">
+                    <label>Category</label>
+                    <select id="exp-cat" class="form-control">
+                      <option>Production</option><option>Raw Material</option><option>Packing</option><option>Courier</option><option>Petrol</option><option>Office</option><option>Salary</option><option>GST</option><option>Maintenance</option><option>Other</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="form-group"><label>Description</label><input type="text" id="exp-desc" class="form-control" required placeholder="e.g. Purchased spice grinding blade"></div>
+                <div class="form-grid-2">
+                  <div class="form-group"><label>Expense Amount (₹)</label><input type="number" id="exp-amount" class="form-control" step="0.01" required></div>
+                  <div class="form-group">
+                    <label>Payment Mode</label>
+                    <select id="exp-mode" class="form-control">
+                      <option>Bank</option><option>Cash</option><option>UPI</option><option>Card</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="form-grid-2">
+                  <div class="form-group"><label>Paid To / Vendor</label><input type="text" id="exp-paid" class="form-control" required placeholder="e.g. Modern Machinery Store"></div>
+                  <div class="form-group"><label>Receipt / Voucher Number</label><input type="text" id="exp-receipt" class="form-control"></div>
+                </div>
+                <div class="form-group"><label>Notes</label><input type="text" id="exp-notes" class="form-control"></div>
+                <button type="submit" id="expenses-submit-btn" class="btn-primary submit-btn" style="width: 100%;">Save Record</button>
+              </form>
+            </div>
+            <div class="table-responsive">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Date</th><th>Category</th><th>Description</th><th>Amount</th><th>Mode</th><th>Paid To</th><th>Receipt No</th><th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="expenses-table-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ================= INCOME MODULE ================= -->
+        <section id="section-income" class="app-section">
+          <div class="section-header"><h2 class="section-title">Income / Cash Inflow Ledger</h2></div>
+          <div class="module-layout">
+            <div class="card">
+              <div class="card-title">Record Income Entry</div>
+              <form id="income-form">
+                <div class="form-grid-2">
+                  <div class="form-group"><label>Income Date</label><input type="date" id="inc-date" class="form-control" required></div>
+                  <div class="form-group">
+                    <label>Source</label>
+                    <select id="inc-source" class="form-control">
+                      <option>Sales</option><option>Investor Fund</option><option>Other Income</option><option>Refund</option><option>Commission</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="form-group"><label>Description</label><input type="text" id="inc-desc" class="form-control" required placeholder="Description of the income"></div>
+                <div class="form-grid-2">
+                  <div class="form-group"><label>Amount (₹)</label><input type="number" id="inc-amount" class="form-control" step="0.01" required></div>
+                  <div class="form-group">
+                    <label>Payment Mode</label>
+                    <select id="inc-mode" class="form-control">
+                      <option>UPI</option><option>Bank</option><option>Cash</option><option>Card</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="form-group"><label>Received From</label><input type="text" id="inc-received" class="form-control" required></div>
+                <div class="form-group"><label>Notes</label><input type="text" id="inc-notes" class="form-control"></div>
+                <button type="submit" id="income-submit-btn" class="btn-primary submit-btn" style="width: 100%;">Save Record</button>
+              </form>
+            </div>
+            <div class="table-responsive">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Date</th><th>Source</th><th>Description</th><th>Amount</th><th>Mode</th><th>Received From</th><th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="income-table-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ================= CASH BOOK MODULE ================= -->
+        <section id="section-cashbook" class="app-section">
+          <div class="section-header">
+            <h2 class="section-title">Cash Book (On-Hand Liquidity)</h2>
+          </div>
+          <div class="module-layout">
+            <div class="card">
+              <div class="card-title">Manual Cash Entry</div>
+              <form id="cashbook-form">
+                <div class="form-group"><label>Transaction Date</label><input type="date" id="cb-date" class="form-control" required></div>
+                <div class="form-group">
+                  <label>Transaction Type</label>
+                  <select id="cb-type" class="form-control">
+                    <option>Cash In</option><option>Cash Out</option>
+                  </select>
+                </div>
+                <div class="form-group"><label>Description</label><input type="text" id="cb-desc" class="form-control" required placeholder="e.g. Office tea expense"></div>
+                <div class="form-group"><label>Amount (₹)</label><input type="number" id="cb-amount" class="form-control" step="0.01" required></div>
+                <div class="form-group"><label>Reference ID (Optional)</label><input type="text" id="cb-ref" class="form-control" placeholder="e.g. REC-11"></div>
+                <button type="submit" id="cashbook-submit-btn" class="btn-primary submit-btn" style="width: 100%;">Save Record</button>
+              </form>
+            </div>
+            <div class="table-responsive">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Date</th><th>Type</th><th>Description</th><th>Cash In (+)</th><th>Cash Out (-)</th><th>Rolling Balance</th><th>Reference</th><th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="cashbook-table-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ================= BANK BOOK MODULE ================= -->
+        <section id="section-bankbook" class="app-section">
+          <div class="section-header">
+            <h2 class="section-title">Bank Book (Federal Bank Ledger)</h2>
+          </div>
+          <div class="module-layout">
+            <div class="card">
+              <div class="card-title">Manual Bank Entry</div>
+              <form id="bankbook-form">
+                <div class="form-group"><label>Transaction Date</label><input type="date" id="bb-date" class="form-control" required></div>
+                <div class="form-group"><label>Bank Name</label><input type="text" id="bb-bank" class="form-control" value="Federal Bank" required></div>
+                <div class="form-group">
+                  <label>Transaction Type</label>
+                  <select id="bb-type" class="form-control">
+                    <option>Amount In</option><option>Amount Out</option>
+                  </select>
+                </div>
+                <div class="form-group"><label>Description</label><input type="text" id="bb-desc" class="form-control" required placeholder="e.g. NEFT transfer"></div>
+                <div class="form-group"><label>Amount (₹)</label><input type="number" id="bb-amount" class="form-control" step="0.01" required></div>
+                <div class="form-group"><label>Transaction Ref / UTR No.</label><input type="text" id="bb-ref" class="form-control" required placeholder="TXN..."></div>
+                <button type="submit" id="bankbook-submit-btn" class="btn-primary submit-btn" style="width: 100%;">Save Record</button>
+              </form>
+            </div>
+            <div class="table-responsive">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Date</th><th>Bank Name</th><th>Type</th><th>Description</th><th>Amount In (+)</th><th>Amount Out (-)</th><th>Rolling Balance</th><th>Ref / UTR</th><th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="bankbook-table-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ================= ACCOUNTING MODULE ================= -->
+        <section id="section-accounting" class="app-section">
+          <div class="section-header"><h2 class="section-title">Consolidated Accounting Summary</h2></div>
+          
+          <div class="dashboard-grid">
+            <div class="dashboard-card">
+              <div class="card-header">Total Gross Income</div>
+              <div id="acc-tot-income" class="card-value">₹0.00</div>
+              <div class="card-footer">All cash inflows log</div>
+            </div>
+            <div class="dashboard-card">
+              <div class="card-header">Total Operating Expenses</div>
+              <div id="acc-tot-expense" class="card-value" style="color: var(--danger);">₹0.00</div>
+              <div class="card-footer">All operating expenses log</div>
+            </div>
+            <div class="dashboard-card">
+              <div class="card-header">Estimated Net Profit</div>
+              <div id="acc-profit" class="card-value">₹0.00</div>
+              <div class="card-footer">Inflow - Outflow summary</div>
+            </div>
+            <div class="dashboard-card">
+              <div class="card-header">Total Invoiced Sales</div>
+              <div id="acc-tot-sales" class="card-value">₹0.00</div>
+              <div class="card-footer">Sales book sum</div>
+            </div>
+            <div class="dashboard-card">
+              <div class="card-header">Total Invoice Purchases</div>
+              <div id="acc-tot-purchase" class="card-value">₹0.00</div>
+              <div class="card-footer">Purchase book sum</div>
+            </div>
+            <div class="dashboard-card">
+              <div class="card-header">Available Cash Liquidity</div>
+              <div id="acc-cash-bal" class="card-value">₹0.00</div>
+              <div class="card-footer">Cash box balance</div>
+            </div>
+            <div class="dashboard-card">
+              <div class="card-header">Available Bank Liquidity</div>
+              <div id="acc-bank-bal" class="card-value">₹0.00</div>
+              <div class="card-footer">Bank accounts ledger</div>
+            </div>
+            <div class="dashboard-card" style="border-left: 4px solid var(--warning);">
+              <div class="card-header" style="color: var(--warning);">Outstanding Receivables</div>
+              <div id="acc-pending-in" class="card-value" style="color: var(--warning);">₹0.00</div>
+              <div class="card-footer" style="color: var(--warning);">Pending sales collection</div>
+            </div>
+            <div class="dashboard-card" style="border-left: 4px solid var(--warning);">
+              <div class="card-header" style="color: var(--warning);">Outstanding Payables</div>
+              <div id="acc-pending-out" class="card-value" style="color: var(--warning);">₹0.00</div>
+              <div class="card-footer" style="color: var(--warning);">Unpaid raw material invoices</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ================= INVESTORS MODULE ================= -->
+        <section id="section-investors" class="app-section">
+          <div class="section-header"><h2 class="section-title">Investors Register</h2></div>
+          <div class="module-layout">
+            <div class="card">
+              <div class="card-title">Add / Update Investor</div>
+              <form id="investors-form">
+                <div class="form-group"><label>Investor Name</label><input type="text" id="inv-name" class="form-control" required></div>
+                <div class="form-grid-2">
+                  <div class="form-group"><label>Phone Number</label><input type="tel" id="inv-phone" class="form-control" required></div>
+                  <div class="form-group"><label>Email Address</label><input type="email" id="inv-email" class="form-control" required></div>
+                </div>
+                <div class="form-group"><label>Full Address</label><input type="text" id="inv-address" class="form-control" required></div>
+                <div class="form-grid-2">
+                  <div class="form-group"><label>Investment Capital (₹)</label><input type="number" id="inv-amount" class="form-control" step="0.01" required></div>
+                  <div class="form-group"><label>Company Share (%)</label><input type="number" id="inv-share" class="form-control" step="0.01" required></div>
+                </div>
+                <div class="form-grid-2">
+                  <div class="form-group"><label>Joining Date</label><input type="date" id="inv-date" class="form-control" required></div>
+                  <div class="form-group">
+                    <label>Venture Status</label>
+                    <select id="inv-status" class="form-control">
+                      <option>Active</option><option>Inactive</option><option>Exited</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="form-group"><label>Investment Notes</label><input type="text" id="inv-notes" class="form-control"></div>
+                <button type="submit" id="investors-submit-btn" class="btn-primary submit-btn" style="width: 100%;">Save Record</button>
+              </form>
+            </div>
+            <div class="table-responsive">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Investor Name</th><th>Contact Details</th><th>Address</th><th>Investment Amount</th><th>Share %</th><th>Joining Date</th><th>Status</th><th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="investors-table-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ================= INVESTMENT SHARING MODULE ================= -->
+        <section id="section-investment-sharing" class="app-section">
+          <div class="section-header"><h2 class="section-title">Investment Profit Sharing Outlays</h2></div>
+          <div class="module-layout">
+            <div class="card">
+              <div class="card-title">Distribute Profit Share</div>
+              <form id="sharing-form">
+                <div class="form-grid-2">
+                  <div class="form-group"><label>Payout Period</label><input type="text" id="shr-period" class="form-control" required placeholder="e.g. July 2026"></div>
+                  <div class="form-group"><label>Total Distributed Company Profit (₹)</label><input type="number" id="shr-profit" class="form-control" step="0.01" required></div>
+                </div>
+                <div class="form-grid-2">
+                  <div class="form-group"><label>Investor Name</label><input type="text" id="shr-investor" class="form-control" placeholder="Type exact name" required></div>
+                  <div class="form-group"><label>Investor Share %</label><input type="number" id="shr-percentage" class="form-control" step="0.01" required placeholder="15"></div>
+                </div>
+                <div class="form-group"><label>Profit Share Amount Payable (₹ - Auto)</label><input type="number" id="shr-amount" class="form-control" readonly style="background-color: #f1f5f9;"></div>
+                <div class="form-grid-2">
+                  <div class="form-group">
+                    <label>Payment Status</label>
+                    <select id="shr-status" class="form-control">
+                      <option>Paid</option><option>Pending</option><option>Partial</option>
+                    </select>
+                  </div>
+                  <div class="form-group"><label>Payment Date</label><input type="date" id="shr-date" class="form-control"></div>
+                </div>
+                <div class="form-group"><label>Reference Remarks</label><input type="text" id="shr-notes" class="form-control"></div>
+                <button type="submit" id="sharing-submit-btn" class="btn-primary submit-btn" style="width: 100%;">Save Record</button>
+              </form>
+            </div>
+            <div class="table-responsive">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Period</th><th>Company Profit</th><th>Investor Name</th><th>Share %</th><th>Payout Amount</th><th>Status</th><th>Payment Date</th><th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="sharing-table-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ================= REPORTS MODULE ================= -->
+        <section id="section-reports" class="app-section">
+          <div class="section-header">
+            <h2 class="section-title">Advanced Reports & Export Desk</h2>
+            <span style="font-size: 0.875rem; color: var(--text-muted);">Firestore-generated summaries</span>
+          </div>
+          <div class="dashboard-grid" id="advanced-report-cards"></div>
+          <div class="card" style="margin-top: 1.5rem;">
+            <div class="card-title">Report Export Actions</div>
+            <div class="form-grid-3" style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.75rem;">
+              <button class="btn-primary" type="button" data-report-export="profitLoss" data-export-format="csv">Profit/Loss CSV</button>
+              <button class="btn-primary" type="button" data-report-export="investor" data-export-format="csv">Investor CSV</button>
+              <button class="btn-primary" type="button" data-report-export="stock" data-export-format="csv">Stock CSV</button>
+              <button class="btn-secondary" type="button" data-report-export="profitLoss" data-export-format="pdf">Profit/Loss PDF</button>
+              <button class="btn-secondary" type="button" data-report-export="salesPurchase" data-export-format="pdf">Sales/Purchase PDF</button>
+              <button class="btn-secondary" type="button" data-report-export="stock" data-export-format="pdf">Stock PDF</button>
+            </div>
+          </div>
+          <div class="card" style="margin-top: 1.5rem;">
+            <div class="card-title">Report Details</div>
+            <div id="advanced-report-table" class="table-responsive"></div>
+          </div>
+        </section>
+
+        <!-- ================= GST REPORTS MODULE ================= -->
+        <section id="section-gstreports" class="app-section">
+          <div class="section-header">
+            <h2 class="section-title">GST Filings & Returns Summary</h2>
+            <span style="font-size: 0.875rem; color: var(--text-muted);">Firestore sales/purchase tax summary</span>
+          </div>
+          <div class="dashboard-grid" id="gst-report-cards"></div>
+          <div class="card" style="margin-top: 1.5rem;">
+            <div class="card-title">GST Export Actions</div>
+            <div class="form-grid-2">
+              <button class="btn-primary" type="button" data-report-export="gst" data-export-format="csv">GST Summary CSV</button>
+              <button class="btn-secondary" type="button" data-report-export="gst" data-export-format="pdf">GST Summary PDF</button>
+            </div>
+          </div>
+          <div class="card" style="margin-top: 1.5rem;">
+            <div class="card-title">GST Summary Details</div>
+            <div id="gst-report-table" class="table-responsive"></div>
+          </div>
+        </section>
+
+        <!-- ================= SETTINGS MODULE ================= -->
+        <section id="section-settings" class="app-section">
+          <div class="section-header">
+            <h2 class="section-title">System Configurations</h2>
+          </div>
+          <div class="settings-grid">
+            <div class="card">
+              <div class="card-title">Application Appearance</div>
+              <p class="settings-help">These options are saved in <code>settings/appSettings.appearance</code> and apply to the whole manager app.</p>
+              <form id="app-appearance-form" class="settings-form">
+                <div class="form-grid-2">
+                  <div class="form-group"><label>Theme</label><select id="appearance-theme" class="form-control"><option value="light">Light</option><option value="dark">Dark</option></select></div>
+                  <div class="form-group"><label>Header Color</label><input id="appearance-header-color" type="color" class="form-control" value="#dc2626"></div>
+                  <div class="form-group"><label>Sidebar Color</label><input id="appearance-sidebar-color" type="color" class="form-control" value="#dc2626"></div>
+                  <div class="form-group"><label>Active Tab Color</label><input id="appearance-active-color" type="color" class="form-control" value="#ffffff"></div>
+                </div>
+                <button id="appearance-save-btn" type="submit" class="btn-primary">Save App Settings</button>
+              </form>
+            </div>
+            <div class="card">
+              <div class="card-title">Firebase-backed Company Settings</div>
+              <p class="settings-help">Company identity, invoice address, contact details, website, social links, logo, and signature logo are saved in <code>settings/companyProfile</code>. Use the Company Profile module to edit these settings.</p>
+              <table class="table settings-company-table">
+                <tr><td>Company</td><td data-company-name>Lakfa ERP</td></tr>
+                <tr><td>Email</td><td data-company-email></td></tr>
+                <tr><td>Phone</td><td data-company-phone></td></tr>
+              </table>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <div id="module-settings-modal" class="settings-modal" hidden>
+    <div class="settings-modal-backdrop" data-settings-close></div>
+    <aside class="settings-panel" role="dialog" aria-modal="true" aria-labelledby="module-settings-title">
+      <div class="settings-panel-header">
+        <div>
+          <div class="settings-eyebrow">Firebase module settings</div>
+          <h2 id="module-settings-title">Tab Settings</h2>
+          <p id="module-settings-subtitle">Saved in settings/appSettings</p>
+        </div>
+        <button type="button" class="icon-button" data-settings-close aria-label="Close settings">×</button>
+      </div>
+      <form id="module-settings-form" class="settings-form">
+        <input type="hidden" id="settings-section-key">
+        <div class="form-group">
+          <label>Numbering Prefix</label>
+          <input id="settings-numbering-prefix" class="form-control" placeholder="Example: INV, ORD, PRD">
+        </div>
+
+        <div class="form-grid-2">
+          <div class="form-group">
+            <label>GST Rate (%)</label>
+            <input id="settings-gst-rate" type="number" class="form-control" min="0" max="28" step="0.01" placeholder="Example: 18">
+          </div>
+          <div class="form-group">
+            <label>Tax Mode</label>
+            <select id="settings-tax-mode" class="form-control">
+              <option value="inclusive">Inclusive</option>
+              <option value="exclusive">Exclusive</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Required Fields</label>
+          <textarea id="settings-required-fields" class="form-control" rows="3" placeholder="One field per line: name, phone, amount"></textarea>
+        </div>
+        <div class="form-group">
+          <label>Dropdown / Status Options</label>
+          <textarea id="settings-dropdown-options" class="form-control" rows="4" placeholder="One option per line: Paid, Pending, Partial"></textarea>
+        </div>
+        <div class="form-group">
+          <label>Visible Table Columns</label>
+          <textarea id="settings-visible-columns" class="form-control" rows="4" placeholder="One column per line: date, customer, amount"></textarea>
+        </div>
+
+        <div class="form-group">
+          <label>WhatsApp / Notification Templates</label>
+          <textarea id="settings-notification-templates" class="form-control" rows="5" placeholder="Example: orderConfirmation=Hi {{customer}}, your order {{orderId}} is confirmed."></textarea>
+          <small style="color: var(--text-muted);">Use placeholders like {{customer}}, {{orderId}}, {{product}}, {{amount}}, {{paymentStatus}}, {{trackingId}}, {{invoiceNumber}}, {{invoiceLink}}, {{companyName}}.</small>
+        </div>
+        <div class="form-group">
+          <label>Module Notes</label>
+          <textarea id="settings-module-notes" class="form-control" rows="3" placeholder="Any settings guidance for this tab"></textarea>
+        </div>
+        <button id="module-settings-save-btn" type="submit" class="btn-primary" style="width: 100%;">Save Settings</button>
+      </form>
+    </aside>
+  </div>
+
+
+  <!-- Role Protection Script Guard -->
+  <script type="module">
+    import { protectPage } from "./js/role-guard.js";
+    protectPage("admin");
+  </script>
+
+  <!-- JS Modules -->
+  <script type="module" src="js/firebase-config.js"></script>
+  <script type="module" src="js/role-guard.js"></script>
+  <script type="module" src="js/utils.js"></script>
+  <script type="module" src="js/firebase-db.js"></script>
+  <script type="module" src="js/company-profile.js"></script>
+  <script type="module" src="js/manager.js"></script>
+</body>
+</html>
