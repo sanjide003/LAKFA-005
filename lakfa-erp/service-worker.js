@@ -1,5 +1,5 @@
 /* Lakfa ERP Progressive Web App Service Worker */
-const CACHE_NAME = "lakfa-erp-cache-v26";
+const CACHE_NAME = "lakfa-erp-cache-v27";
 const ASSETS_TO_CACHE = [
   "index.html",
   "manager.html",

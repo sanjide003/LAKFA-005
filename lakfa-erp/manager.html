@@ -39,6 +39,7 @@
           <button class="sidebar-group-toggle" type="button"><span>Parties</span><span class="chevron">⌄</span></button>
           <div class="sidebar-submenu">
             <a href="#" class="sidebar-item" data-section="customers"><span class="icon" data-icon="user"></span> Customers</a>
+            <a href="#" class="sidebar-item" data-section="parties"><span class="icon" data-icon="users"></span> Parties / Repeat Customers</a>
             <a href="#" class="sidebar-item" data-section="suppliers"><span class="icon" data-icon="store"></span> Suppliers</a>
             <a href="#" class="sidebar-item" data-section="investors"><span class="icon" data-icon="users"></span> Investors</a>
             <a href="#" class="sidebar-item" data-section="payment-requests"><span class="icon" data-icon="payment"></span> Payment Requests</a>
@@ -200,6 +201,9 @@
               <div class="card-footer">Total venture capital pool</div>
             </div>
           </div>
+
+          <div class="card" style="margin-top: 1.5rem;"><div class="card-title">Order Status Overview</div><div class="dashboard-grid" id="dashboard-order-status-cards"></div></div>
+          <div class="settings-grid" style="margin-top: 1.5rem;"><div class="card"><div class="card-title">Month-wise Order History</div><div id="dashboard-order-history"></div></div><div class="card"><div class="card-title">Current Stock Status</div><div id="dashboard-stock-status" class="table-responsive"></div></div></div>
 
           <div class="alert alert-info" style="margin-top: 2rem; display: flex; align-items: flex-start; gap: 0.5rem;">
             <span class="icon" aria-hidden="true" style="color: var(--info); margin-top: 2px;"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12" y2="8"></line></svg></span>
@@ -385,6 +389,13 @@
         </section>
 
         <!-- ================= SUPPLIERS MODULE ================= -->
+        <section id="section-parties" class="app-section">
+          <div class="section-header"><h2 class="section-title">Parties / Repeat Customers</h2><span style="font-size:0.875rem;color:var(--text-muted);">Grouped by customer phone/name from orders</span></div>
+          <div class="dashboard-grid" id="parties-summary-cards"></div>
+          <div class="table-responsive"><table><thead><tr><th>Party</th><th>Orders</th><th>Last Order</th><th>Total</th><th>Balance</th><th>Paid</th><th>Actions</th></tr></thead><tbody id="parties-table-body"></tbody></table></div>
+          <div class="card" style="margin-top:1.5rem;"><div class="card-title" id="party-orders-title">Customer Order History</div><div id="party-orders-history" class="table-responsive"></div></div>
+        </section>
+
         <section id="section-suppliers" class="app-section">
           <div class="section-header"><h2 class="section-title">Suppliers Directory</h2></div>
           <div class="module-layout">
@@ -753,6 +764,7 @@
 
           <div id="order-bulk-actions" class="order-bulk-actions" hidden>
             <strong><span id="selected-orders-count">0</span> selected</strong>
+            <button type="button" id="bulk-print-orders" class="btn-primary btn-sm">Print Selected</button>
             <button type="button" id="bulk-restore-orders" class="btn-secondary btn-sm">Restore</button>
             <button type="button" id="bulk-permanent-delete-orders" class="btn-danger btn-sm">Permanent Delete</button>
           </div>
@@ -811,6 +823,7 @@
                   <div class="form-group"><label>Delivery / Expense ₹</label><input type="number" id="ord-delivery" class="form-control" step="0.01" value="0"></div>
                   <div class="form-group"><label>Total Payable ₹</label><input type="number" id="ord-payable" class="form-control" readonly></div>
                 </div>
+                <div class="form-group"><label>Expense Notes</label><input type="text" id="ord-expense-note" class="form-control" placeholder="Packing, delivery, courier or other order expense note"></div>
                 <hr class="modal-divider">
                 <h4>Payment Details</h4>
                 <div class="form-grid-3">

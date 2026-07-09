@@ -20,6 +20,8 @@ const KEYS = {
   customerLedger: "lakfa_customer_ledger",
   sales: "lakfa_sales",
   orders: "lakfa_orders",
+  orderPayments: "lakfa_order_payments",
+  orderExpenses: "lakfa_order_expenses",
   delivery: "lakfa_delivery",
   expenses: "lakfa_expenses",
   income: "lakfa_income",
@@ -89,6 +91,8 @@ const COLLECTION_BY_KEY = {
   [KEYS.customerLedger]: COLLECTIONS.customerLedger,
   [KEYS.sales]: COLLECTIONS.sales,
   [KEYS.orders]: COLLECTIONS.orders,
+  [KEYS.orderPayments]: COLLECTIONS.orderPayments,
+  [KEYS.orderExpenses]: COLLECTIONS.orderExpenses,
   [KEYS.delivery]: COLLECTIONS.delivery,
   [KEYS.expenses]: COLLECTIONS.expenses,
   [KEYS.income]: COLLECTIONS.income,
@@ -709,6 +713,9 @@ function renderModule(sectionId) {
       renderTable(KEYS.customers, "customers-table-body");
       setupCustomerSearch();
       break;
+    case "parties":
+      renderPartiesDashboard();
+      break;
     case "suppliers":
       renderTable(KEYS.suppliers, "suppliers-table-body");
       refreshSupplierPurchaseOptions();
@@ -839,6 +846,178 @@ function updateDashboardMetrics() {
   document.getElementById("dash-alerts").textContent = stockAlerts;
   document.getElementById("dash-production").textContent = prodBatchesCount;
   document.getElementById("dash-investor").textContent = formatCurrency(investorCap);
+  renderDashboardOrderStatusCards(orders);
+  renderDashboardOrderHistory(orders);
+  renderDashboardStockStatus(products);
+}
+
+function renderDashboardOrderStatusCards(orders = getStoredRecords(KEYS.orders)) {
+  const container = document.getElementById("dashboard-order-status-cards");
+  if (!container) return;
+  const activeOrders = orders.filter((order) => !order.deletedAt);
+  const cards = [
+    ["Pending", activeOrders.filter((order) => normalizeOrderStatus(order.orderStatus) === "pending").length],
+    ["Processing", activeOrders.filter((order) => normalizeOrderStatus(order.orderStatus) === "processing").length],
+    ["Shipped", activeOrders.filter((order) => normalizeOrderStatus(order.orderStatus) === "shipped").length],
+    ["Delivered", activeOrders.filter((order) => normalizeOrderStatus(order.orderStatus) === "delivered").length],
+    ["Payment Due", activeOrders.filter((order) => getOrderBalance(order) > 0).length],
+    ["All Active", activeOrders.length]
+  ];
+  container.innerHTML = cards.map(([label, value]) => `<div class="metric-card compact"><span>${label}</span><strong>${value}</strong></div>`).join("");
+}
+
+function renderDashboardOrderHistory(orders = getStoredRecords(KEYS.orders)) {
+  const container = document.getElementById("dashboard-order-history");
+  if (!container) return;
+  const activeOrders = orders.filter((order) => !order.deletedAt).sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
+  if (!activeOrders.length) {
+    container.innerHTML = `<p class="empty-state">No order history available.</p>`;
+    return;
+  }
+  const groups = activeOrders.reduce((acc, order) => {
+    const monthKey = (order.date || "No date").slice(0, 7) || "No date";
+    acc[monthKey] = acc[monthKey] || [];
+    acc[monthKey].push(order);
+    return acc;
+  }, {});
+  container.innerHTML = Object.entries(groups).map(([month, rows], index) => {
+    const total = rows.reduce((sum, order) => sum + getNumberFromValue(order.totalPayable), 0);
+    return `<details class="report-card" ${index === 0 ? "open" : ""}>
+      <summary><strong>${month}</strong><span>${rows.length} orders • ${formatCurrency(total)}</span></summary>
+      <div class="table-responsive"><table><thead><tr><th>Date</th><th>Customer</th><th>Status</th><th>Total</th><th>Balance</th></tr></thead><tbody>
+        ${rows.map((order) => `<tr><td>${formatDate(order.date)}</td><td>${order.customer || order.customerName || "-"}<br><small>${order.phone || ""}</small></td><td><span class="badge ${getOrderStatusBadge(order.orderStatus)}">${order.orderStatus || "Pending"}</span></td><td>${formatCurrency(order.totalPayable || order.amount || 0)}</td><td>${formatCurrency(getOrderBalance(order))}</td></tr>`).join("")}
+      </tbody></table></div>
+    </details>`;
+  }).join("");
+}
+
+function renderDashboardStockStatus(products = getStoredRecords(KEYS.products)) {
+  const container = document.getElementById("dashboard-stock-status");
+  if (!container) return;
+  if (!products.length) {
+    container.innerHTML = `<p class="empty-state">No product stock records found.</p>`;
+    return;
+  }
+  container.innerHTML = `<div class="table-responsive"><table><thead><tr><th>Product</th><th>Current Stock</th><th>Minimum</th><th>Status</th></tr></thead><tbody>
+    ${products.map((product) => {
+      const current = getNumberFromValue(product.currentStock ?? product.stock ?? product.qty);
+      const minimum = getNumberFromValue(product.minimumStock);
+      const low = current <= minimum;
+      return `<tr><td>${product.name || product.product || "-"}</td><td>${current} ${product.unit || ""}</td><td>${minimum}</td><td><span class="badge ${low ? "badge-danger" : "badge-success"}">${low ? "Low Stock" : "Available"}</span></td></tr>`;
+    }).join("")}
+  </tbody></table></div>`;
+}
+
+function getOrderPayments(orderId, order = {}) {
+  const linked = getStoredRecords(KEYS.orderPayments).filter((payment) => payment.orderId === orderId || payment.sourceId === orderId);
+  const embedded = Array.isArray(order.paymentHistory) ? order.paymentHistory : [];
+  return [...embedded, ...linked].sort((a, b) => String(b.date || b.createdAt || "").localeCompare(String(a.date || a.createdAt || "")));
+}
+
+function getOrderExpenses(orderId, order = {}) {
+  const linked = getStoredRecords(KEYS.orderExpenses).filter((expense) => expense.orderId === orderId || expense.sourceId === orderId);
+  const embedded = Array.isArray(order.expenses) ? order.expenses : [];
+  return [...embedded, ...linked].sort((a, b) => String(b.date || b.createdAt || "").localeCompare(String(a.date || a.createdAt || "")));
+}
+
+function buildPartyGroups() {
+  const groups = new Map();
+  getStoredRecords(KEYS.orders).filter((order) => !order.deletedAt).forEach((order) => {
+    const phone = String(order.phone || "").trim();
+    const name = String(order.customer || order.customerName || "Unknown Customer").trim();
+    const key = phone || name.toLowerCase();
+    if (!groups.has(key)) groups.set(key, { key, phone, name, orders: [], total: 0, balance: 0 });
+    const group = groups.get(key);
+    group.orders.push(order);
+    group.total += getNumberFromValue(order.totalPayable || order.amount);
+    group.balance += getOrderBalance(order);
+    group.lastOrder = !group.lastOrder || String(order.date || "") > String(group.lastOrder.date || "") ? order : group.lastOrder;
+  });
+  return [...groups.values()].sort((a, b) => b.orders.length - a.orders.length || String(b.lastOrder?.date || "").localeCompare(String(a.lastOrder?.date || "")));
+}
+
+function renderPartiesDashboard() {
+  const groups = buildPartyGroups();
+  const cards = document.getElementById("parties-summary-cards");
+  if (cards) {
+    const repeatCount = groups.filter((group) => group.orders.length > 1).length;
+    const receivable = groups.reduce((sum, group) => sum + group.balance, 0);
+    cards.innerHTML = [["Total Parties", groups.length], ["Repeat Parties", repeatCount], ["Receivable", formatCurrency(receivable)]].map(([label, value]) => `<div class="metric-card compact"><span>${label}</span><strong>${value}</strong></div>`).join("");
+  }
+  const tbody = document.getElementById("parties-table-body");
+  if (!tbody) return;
+  if (!groups.length) {
+    tbody.innerHTML = `<tr><td colspan="7" class="text-center">No parties found from orders.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = groups.map((group) => `<tr>
+    <td><strong>${escapeHtml(group.name)}</strong><br><small>${escapeHtml(group.phone || "No phone")}</small></td>
+    <td>${group.orders.length}</td>
+    <td>${formatDate(group.lastOrder?.date)}</td>
+    <td>${formatCurrency(group.total)}</td>
+    <td>${formatCurrency(group.balance)}</td>
+    <td>${formatCurrency(group.total - group.balance)}</td>
+    <td><button class="btn-secondary btn-sm" data-party-history="${escapeHtml(group.key)}">History</button> <button class="btn-primary btn-sm" data-party-prefill="${escapeHtml(group.key)}">New Order</button> <button class="btn-secondary btn-sm" data-party-statement="${escapeHtml(group.key)}">Statement</button></td>
+  </tr>`).join("");
+  tbody.querySelectorAll("[data-party-history]").forEach((button) => button.addEventListener("click", () => renderPartyOrderHistory(button.dataset.partyHistory)));
+  tbody.querySelectorAll("[data-party-prefill]").forEach((button) => button.addEventListener("click", () => prefillOrderFromParty(button.dataset.partyPrefill)));
+  tbody.querySelectorAll("[data-party-statement]").forEach((button) => button.addEventListener("click", () => printCustomerStatement(button.dataset.partyStatement)));
+  renderPartyOrderHistory(groups[0]?.key);
+}
+
+function getPartyGroup(key) {
+  return buildPartyGroups().find((group) => group.key === key);
+}
+
+function renderPartyOrderHistory(key) {
+  const group = getPartyGroup(key);
+  const title = document.getElementById("party-orders-title");
+  const container = document.getElementById("party-orders-history");
+  if (!container) return;
+  if (!group) { container.innerHTML = `<p class="empty-state">Select a party to view order history.</p>`; return; }
+  if (title) title.textContent = `${group.name} — Customer Order History`;
+  container.innerHTML = `<table><thead><tr><th>Date</th><th>Items</th><th>Status</th><th>Paid</th><th>Balance</th></tr></thead><tbody>
+    ${group.orders.map((order) => `<tr><td>${formatDate(order.date)}</td><td>${renderOrderItems(order)}</td><td>${order.orderStatus || "Pending"}</td><td>${formatCurrency(order.paidAmount)}</td><td>${formatCurrency(getOrderBalance(order))}</td></tr>`).join("")}
+  </tbody></table>`;
+}
+
+function prefillOrderFromParty(key) {
+  const group = getPartyGroup(key);
+  const order = group?.lastOrder;
+  if (!order) return;
+  openOrderModal();
+  setValue("ord-customer", order.customer || order.customerName);
+  setValue("ord-phone", order.phone);
+  setValue("ord-gst", order.gstNumber);
+  setValue("ord-shop", order.shopName);
+  setValue("ord-pin", order.pincode || order.pin);
+  setValue("ord-address", order.address);
+  showToast("Party details loaded into new order form.", "success");
+}
+
+function printCustomerStatement(key) {
+  const group = getPartyGroup(key);
+  if (!group) return;
+  const rows = group.orders.map((order) => `<tr><td>${formatDate(order.date)}</td><td>${renderOrderItems(order)}</td><td>${order.orderStatus || "Pending"}</td><td>${formatCurrency(order.totalPayable)}</td><td>${formatCurrency(order.paidAmount)}</td><td>${formatCurrency(getOrderBalance(order))}</td></tr>`).join("");
+  const html = `<html><head><title>Customer Statement</title><style>body{font-family:Arial,sans-serif;padding:24px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ddd;padding:8px;text-align:left}</style></head><body><h1>Customer Statement</h1><h2>${escapeHtml(group.name)}</h2><p>${escapeHtml(group.phone || "")}</p><table><thead><tr><th>Date</th><th>Items</th><th>Status</th><th>Total</th><th>Paid</th><th>Balance</th></tr></thead><tbody>${rows}</tbody></table><h3>Total Receivable: ${formatCurrency(group.balance)}</h3></body></html>`;
+  openPrintableDocument(html);
+}
+
+function printSelectedOrders() {
+  const ids = getSelectedOrderIds();
+  const orders = getStoredRecords(KEYS.orders).filter((order) => ids.includes(order.id) && !order.deletedAt);
+  if (!orders.length) { showToast("Select active orders to print.", "info"); return; }
+  const html = `<html><head><title>Selected Orders</title><style>body{font-family:Arial,sans-serif;padding:24px}.order{border:1px solid #ddd;margin:0 0 16px;padding:12px;break-inside:avoid}</style></head><body><h1>Selected Orders</h1>${orders.map((order) => `<section class="order"><h2>${escapeHtml(order.customer || order.customerName || "Order")}</h2><p>${formatDate(order.date)} • ${escapeHtml(order.phone || "")}</p><p>${renderOrderItems(order)}</p><p>Total: <strong>${formatCurrency(order.totalPayable)}</strong> Paid: ${formatCurrency(order.paidAmount)} Balance: ${formatCurrency(getOrderBalance(order))}</p><p>${escapeHtml(order.address || "")}</p></section>`).join("")}</body></html>`;
+  openPrintableDocument(html);
+}
+
+function openPrintableDocument(html) {
+  const win = window.open("", "_blank");
+  if (!win) { showToast("Popup blocked. Please allow popups to print.", "error"); return; }
+  win.document.write(html);
+  win.document.close();
+  win.focus();
+  win.print();
 }
 
 /**
@@ -1104,6 +1283,7 @@ function initOrderManagementUi() {
   document.getElementById("orders-table-body")?.addEventListener("change", (event) => {
     if (event.target.matches(".order-row-select")) updateOrderBulkActions();
   });
+  document.getElementById("bulk-print-orders")?.addEventListener("click", printSelectedOrders);
   document.getElementById("bulk-restore-orders")?.addEventListener("click", () => bulkRecycleOrders("restore"));
   document.getElementById("bulk-permanent-delete-orders")?.addEventListener("click", () => bulkRecycleOrders("permanent-delete"));
   ["orders-search", "orders-from-date", "orders-to-date"].forEach((id) => {
@@ -1201,9 +1381,22 @@ function initOrderPaymentModal() {
       balanceDue: Math.max(totalPayable - paidAmount, 0),
       advanceCredit: Math.max(paidAmount - totalPayable, 0),
       paymentMode: getValue("pay-mode"),
-      paymentStatus: getValue("pay-status")
+      paymentStatus: getValue("pay-status"),
+      paymentHistory: [...(Array.isArray(order.paymentHistory) ? order.paymentHistory : []), {
+        date: new Date().toISOString().slice(0, 10),
+        amount: Math.max(paidAmount - getNumberFromValue(order.paidAmount), 0),
+        mode: getValue("pay-mode"),
+        status: getValue("pay-status"),
+        notes: "Payment modal update"
+      }].filter((payment) => getNumberFromValue(payment.amount) > 0)
     };
     await saveOrderWorkflowUpdate(id, updatedOrder, order, "Payment updated.");
+    const delta = Math.max(paidAmount - getNumberFromValue(order.paidAmount), 0);
+    if (delta > 0) {
+      await createCollectionRecord(COLLECTIONS.orderPayments, {
+        sourceId: id, orderId: id, date: new Date().toISOString().slice(0, 10), amount: delta, mode: getValue("pay-mode"), status: getValue("pay-status"), customer: order.customer || order.customerName, phone: order.phone
+      });
+    }
     closeOrderPaymentModal();
   });
 }
@@ -1443,9 +1636,11 @@ function renderOrdersManagement() {
   }
 
   records.forEach((order) => {
+    const payments = getOrderPayments(order.id, order);
+    const expenses = getOrderExpenses(order.id, order);
     const paid = getNumberFromValue(order.paidAmount);
     const balance = getOrderBalance(order);
-    const expense = getNumberFromValue(order.deliveryCharge || order.expenseTotal);
+    const expense = expenses.reduce((sum, row) => sum + getNumberFromValue(row.amount), 0) || getNumberFromValue(order.deliveryCharge || order.expenseTotal);
     const total = getNumberFromValue(order.totalPayable);
     const tr = document.createElement("tr");
     tr.dataset.id = order.id;
@@ -1455,8 +1650,8 @@ function renderOrdersManagement() {
       <td class="order-contact"><strong>${order.customer || order.customerName || "-"}</strong>${order.phone || ""}<br><small>PIN: ${order.pincode || order.pin || "-"}</small></td>
       <td>${renderOrderItems(order)}</td>
       <td><span class="badge ${getOrderStatusBadge(order.orderStatus)}">${order.orderStatus || "Pending"}</span></td>
-      <td><div class="order-money-lines"><div><span>Total</span><strong>${formatCurrency(expense)}</strong></div><div class="paid"><span>Paid</span><strong>${formatCurrency(0)}</strong></div><div class="balance"><span>Balance</span><strong>${formatCurrency(expense)}</strong></div></div></td>
-      <td><div class="order-money-lines"><div><span>Total</span><strong>${formatCurrency(total)}</strong></div><div class="paid"><span>Paid</span><strong>${formatCurrency(paid)}</strong></div><div class="balance"><span>Balance</span><strong>${formatCurrency(balance)}</strong></div></div></td>
+      <td><div class="order-money-lines"><div><span>Total</span><strong>${formatCurrency(expense)}</strong></div><div><span>Rows</span><strong>${expenses.length}</strong></div><div><small>${escapeHtml(order.expenseNote || "")}</small></div></div></td>
+      <td><div class="order-money-lines"><div><span>Total</span><strong>${formatCurrency(total)}</strong></div><div class="paid"><span>Paid</span><strong>${formatCurrency(paid)}</strong></div><div class="balance"><span>Balance</span><strong>${formatCurrency(balance)}</strong></div><div><small>${payments.length} payment history rows</small></div></div></td>
       <td>${renderOrderActions(order)}</td>
     `;
     tbody.appendChild(tr);
@@ -1559,7 +1754,13 @@ function updateOrderBulkActions() {
   const countEl = document.getElementById("selected-orders-count");
   const ids = getSelectedOrderIds();
   if (countEl) countEl.textContent = String(ids.length);
-  if (bar) bar.hidden = !(activeOrderView === "recycle-bin" && ids.length > 0);
+  if (bar) bar.hidden = ids.length === 0;
+  const printButton = document.getElementById("bulk-print-orders");
+  const restoreButton = document.getElementById("bulk-restore-orders");
+  const deleteButton = document.getElementById("bulk-permanent-delete-orders");
+  if (printButton) printButton.hidden = activeOrderView === "recycle-bin";
+  if (restoreButton) restoreButton.hidden = activeOrderView !== "recycle-bin";
+  if (deleteButton) deleteButton.hidden = activeOrderView !== "recycle-bin";
 }
 
 async function bulkRecycleOrders(action) {
@@ -4037,12 +4238,15 @@ function initWritableFormListeners() {
         amount,
         deliveryCharge,
         expenseTotal: deliveryCharge,
+        expenseNote: getValue("ord-expense-note"),
+        expenses: deliveryCharge > 0 ? [{ date: getValue("ord-date"), amount: deliveryCharge, category: "Order Expense", notes: getValue("ord-expense-note") }] : [],
         totalPayable,
         paidAmount,
         balanceDue,
         advanceCredit,
         paymentStatus: getValue("ord-pstatus"),
         paymentMode: getValue("ord-payment-mode"),
+        paymentHistory: paidAmount > 0 ? [{ date: getValue("ord-date"), amount: paidAmount, mode: getValue("ord-payment-mode"), status: getValue("ord-pstatus"), notes: "Initial/updated order payment" }] : [],
         orderStatus: getValue("ord-ostatus"),
         address: getValue("ord-address"),
         notes: getValue("ord-notes"),
@@ -4052,6 +4256,7 @@ function initWritableFormListeners() {
     populate: populateOrders,
     afterSave: async (data, meta) => {
       await reconcileOrderInventoryAndLedger(data, { ...meta, moduleName: "Order", amount: data.paidAmount, direction: "in", reference: data.customer });
+      await syncOrderPaymentAndExpenseRecords(data, meta);
       await ensureCustomerFromOrder(data);
       if (data.advanceCredit > 0) {
         showToast(`Extra payment saved as party advance credit: ${formatCurrency(data.advanceCredit)}`, "info");
@@ -4515,6 +4720,25 @@ async function reconcileOrderInventoryAndLedger(data, meta) {
   if (data) addOrderInventoryApplyOperations(operations, data, meta);
   addLinkedLedgerDeleteOperations(operations, meta.id);
   if (data) addLinkedLedgerCreateOperation(operations, data, meta);
+  if (operations.length) await commitBatchOperations(operations);
+}
+
+async function syncOrderPaymentAndExpenseRecords(data, meta) {
+  const sourceId = meta.id || meta.previous?.id;
+  if (!sourceId) return;
+  const operations = [];
+  addLinkedRecordsDeleteOperations(operations, KEYS.orderPayments, sourceId);
+  addLinkedRecordsDeleteOperations(operations, KEYS.orderExpenses, sourceId);
+  if (getNumberFromValue(data.paidAmount) > 0) {
+    operations.push({ type: "set", collectionName: COLLECTIONS.orderPayments, payload: {
+      sourceId, orderId: sourceId, date: data.date, amount: data.paidAmount, mode: data.paymentMode, status: data.paymentStatus, customer: data.customer, phone: data.phone, notes: "Order payment snapshot"
+    }});
+  }
+  if (getNumberFromValue(data.deliveryCharge) > 0) {
+    operations.push({ type: "set", collectionName: COLLECTIONS.orderExpenses, payload: {
+      sourceId, orderId: sourceId, date: data.date, amount: data.deliveryCharge, category: "Order Expense", customer: data.customer, notes: data.expenseNote || data.notes || "Order expense"
+    }});
+  }
   if (operations.length) await commitBatchOperations(operations);
 }
 
@@ -5571,6 +5795,7 @@ function populateOrders(record) {
     amount: record.amount || 0
   }]);
   setValue("ord-delivery", record.deliveryCharge);
+  setValue("ord-expense-note", record.expenseNote);
   setValue("ord-payable", record.totalPayable);
   setValue("ord-paid", record.paidAmount);
   setValue("ord-payment-mode", record.paymentMode);
@@ -5722,6 +5947,7 @@ function activeSectionKey() {
   return {
     products: KEYS.products,
     customers: KEYS.customers,
+    parties: KEYS.orders,
     suppliers: KEYS.suppliers,
     investors: KEYS.investors,
     "payment-requests": KEYS.investorPaymentRequests,
