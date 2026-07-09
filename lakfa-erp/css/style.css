@@ -782,3 +782,19 @@ tr:hover td {
 .order-recycle-actions { display: flex; flex-wrap: wrap; gap: 0.35rem; min-width: 180px; }
 .order-payment-modal-card { width: min(520px, 100%); }
 .text-danger { color: var(--danger); }
+
+.permission-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 0.5rem;
+}
+
+.permission-grid label {
+  align-items: center;
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.6rem 0.75rem;
+}

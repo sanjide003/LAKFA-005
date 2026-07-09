@@ -31,6 +31,7 @@ const KEYS = {
   notifications: "lakfa_notifications",
   profitDistributions: "lakfa_profit_distributions",
   auditLogs: "lakfa_audit_logs",
+  users: "lakfa_users",
   employees: "lakfa_employees",
   salaryPayments: "lakfa_salary_payments",
   assets: "lakfa_assets",
@@ -62,7 +63,7 @@ const WRITABLE_FORM_IDS = new Set([
   "purchase-form", "inventory-form", "raw-material-form", "sales-form", "orders-form", "delivery-form",
   "expenses-form", "income-form", "cashbook-form", "bankbook-form", "production-form", "sharing-form",
   "finance-account-form", "finance-category-form", "finance-transfer-form", "daily-account-form", "payment-request-form",
-  "employee-form", "salary-payment-form", "asset-form", "manager-loan-form", "loan-repayment-form"
+  "employee-form", "salary-payment-form", "asset-form", "manager-loan-form", "loan-repayment-form", "staff-user-form", "print-settings-form"
 ]);
 const WRITABLE_KEYS = new Set([
   KEYS.products, KEYS.customers, KEYS.suppliers, KEYS.investors,
@@ -70,7 +71,7 @@ const WRITABLE_KEYS = new Set([
   KEYS.expenses, KEYS.income, KEYS.cashBook, KEYS.bankBook, KEYS.production, KEYS.sharing,
   KEYS.financeAccounts, KEYS.financeCategories, KEYS.financeTransfers, KEYS.dailyAccounts,
   KEYS.investorExpenses, KEYS.investorPaymentRequests, KEYS.notifications, KEYS.profitDistributions, KEYS.auditLogs,
-  KEYS.employees, KEYS.salaryPayments, KEYS.assets, KEYS.managerLoans, KEYS.loanRepayments
+  KEYS.employees, KEYS.salaryPayments, KEYS.assets, KEYS.managerLoans, KEYS.loanRepayments, KEYS.users
 ]);
 
 const COLLECTION_BY_KEY = {
@@ -103,6 +104,7 @@ const COLLECTION_BY_KEY = {
   [KEYS.notifications]: COLLECTIONS.notifications,
   [KEYS.profitDistributions]: COLLECTIONS.profitDistributions,
   [KEYS.auditLogs]: COLLECTIONS.auditLogs,
+  [KEYS.users]: COLLECTIONS.users,
   [KEYS.employees]: COLLECTIONS.employees,
   [KEYS.salaryPayments]: COLLECTIONS.salaryPayments,
   [KEYS.assets]: COLLECTIONS.assets,
@@ -142,6 +144,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   initProfitSharingAutomationUi();
   initEmployeeSalaryUi();
   initManagerLoansUi();
+  initSettingsAccessUi();
 
   // 6. Initialize report export actions
   initReportExportActions();
@@ -402,6 +405,169 @@ function initSidebarMobileToggle() {
   }
 }
 
+let staffUserEditId = null;
+const STAFF_PERMISSION_KEYS = ["orders", "inventory", "finance", "reports", "settings", "production", "investors"];
+
+function initSettingsAccessUi() {
+  const staffForm = document.getElementById("staff-user-form");
+  staffForm?.addEventListener("submit", saveStaffUser);
+  document.getElementById("download-all-orders-csv-btn")?.addEventListener("click", downloadAllOrdersCsv);
+  document.getElementById("print-settings-form")?.addEventListener("submit", savePrintSettings);
+}
+
+async function renderSettingsDashboard() {
+  await renderSettingsCompanySummary();
+  renderInvestorAccessList();
+  renderStaffUsersList();
+  populatePrintSettingsForm();
+}
+
+async function renderSettingsCompanySummary() {
+  const profile = await loadCompanyProfile();
+  document.querySelectorAll("[data-company-name]").forEach((el) => { el.textContent = profile.companyName || "Lakfa ERP"; });
+  document.querySelectorAll("[data-company-email]").forEach((el) => { el.textContent = profile.email || "-"; });
+  document.querySelectorAll("[data-company-phone]").forEach((el) => { el.textContent = profile.phone || "-"; });
+  const gst = document.getElementById("settings-company-gst");
+  if (gst) gst.textContent = profile.gst || "-";
+}
+
+function getStaffPermissionsFromForm() {
+  return Object.fromEntries(STAFF_PERMISSION_KEYS.map((permission) => [permission, Boolean(document.querySelector(`[data-permission="${permission}"]`)?.checked)]));
+}
+
+function setStaffPermissionToggles(permissions = {}) {
+  STAFF_PERMISSION_KEYS.forEach((permission) => {
+    const input = document.querySelector(`[data-permission="${permission}"]`);
+    if (input) input.checked = Boolean(permissions[permission]);
+  });
+}
+
+async function saveStaffUser(event) {
+  event.preventDefault();
+  const payload = {
+    name: getValue("staff-name"),
+    email: getValue("staff-email"),
+    uid: getValue("staff-uid"),
+    role: getValue("staff-role"),
+    status: getValue("staff-status"),
+    permissions: getStaffPermissionsFromForm(),
+    updatedAt: new Date().toISOString()
+  };
+  if (!payload.name || !payload.email) {
+    showToast("Please enter staff name and email.", "error");
+    return;
+  }
+  const button = document.getElementById("staff-user-submit-btn");
+  if (button) button.disabled = true;
+  try {
+    if (staffUserEditId) {
+      await updateCollectionRecord(COLLECTIONS.users, staffUserEditId, payload);
+      showToast("User access updated.", "success");
+    } else if (payload.uid) {
+      await saveDocument(COLLECTIONS.users, payload.uid, { ...payload, createdAt: new Date().toISOString() });
+      showToast("User access created with Auth UID.", "success");
+    } else {
+      await createCollectionRecord(COLLECTIONS.users, { ...payload, createdAt: new Date().toISOString() });
+      showToast("User access created.", "success");
+    }
+    staffUserEditId = null;
+    event.target.reset();
+    setStaffPermissionToggles({});
+    if (button) button.textContent = "Save User Access";
+    await refreshActiveData();
+  } catch (err) {
+    console.error("Unable to save user access", err);
+    showToast(getFirebaseErrorMessage(err, "Unable to save user access."), "error");
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
+function renderInvestorAccessList() {
+  const container = document.getElementById("settings-investor-access");
+  if (!container) return;
+  const investors = getStoredRecords(KEYS.investors);
+  container.innerHTML = `<table><thead><tr><th>Investor</th><th>Email</th><th>Capital</th><th>Status</th></tr></thead><tbody>${investors.length ? investors.map((investor) => `<tr><td>${escapeHtml(investor.name || investor.investorName || '-')}</td><td>${escapeHtml(investor.email || '-')}</td><td>${formatCurrency(investor.amount || investor.initialInvestment)}</td><td><span class="badge ${investor.status === 'inactive' ? 'badge-danger' : 'badge-success'}">${escapeHtml(investor.status || 'active')}</span></td></tr>`).join("") : `<tr><td colspan="4" class="text-center">No investor access records yet.</td></tr>`}</tbody></table>`;
+}
+
+function renderStaffUsersList() {
+  const container = document.getElementById("settings-staff-users");
+  if (!container) return;
+  const users = getStoredRecords(KEYS.users);
+  container.innerHTML = `<table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>UID</th><th>Permissions</th><th>Actions</th></tr></thead><tbody>${users.length ? users.map((user) => {
+    const permissions = Object.entries(user.permissions || {}).filter(([, enabled]) => enabled).map(([permission]) => permission).join(", ") || "-";
+    return `<tr><td>${escapeHtml(user.name || '-')}</td><td>${escapeHtml(user.email || '-')}</td><td>${escapeHtml(user.role || '-')}</td><td><span class="badge ${user.status === 'active' ? 'badge-success' : 'badge-danger'}">${escapeHtml(user.status || 'inactive')}</span></td><td>${escapeHtml(user.uid || user.id || '-')}</td><td>${escapeHtml(permissions)}</td><td class="text-right"><button class="btn-secondary btn-sm staff-edit" data-id="${user.id}">Edit</button> <button class="btn-secondary btn-sm staff-toggle" data-id="${user.id}" data-status="${user.status === 'active' ? 'inactive' : 'active'}">${user.status === 'active' ? 'Deactivate' : 'Activate'}</button></td></tr>`;
+  }).join("") : `<tr><td colspan="7" class="text-center">No staff users configured yet.</td></tr>`}</tbody></table>`;
+  container.querySelectorAll(".staff-edit").forEach((btn) => btn.addEventListener("click", () => loadStaffUserForEdit(btn.dataset.id)));
+  container.querySelectorAll(".staff-toggle").forEach((btn) => btn.addEventListener("click", () => toggleStaffUserStatus(btn.dataset.id, btn.dataset.status)));
+}
+
+function loadStaffUserForEdit(id) {
+  const user = getStoredRecords(KEYS.users).find((record) => record.id === id);
+  if (!user) return;
+  staffUserEditId = id;
+  setValue("staff-name", user.name);
+  setValue("staff-email", user.email);
+  setValue("staff-uid", user.uid || user.id);
+  setValue("staff-role", user.role);
+  setValue("staff-status", user.status);
+  setStaffPermissionToggles(user.permissions || {});
+  const button = document.getElementById("staff-user-submit-btn");
+  if (button) button.textContent = "Update User Access";
+  showToast("User access loaded for editing.", "info");
+}
+
+async function toggleStaffUserStatus(id, status) {
+  await updateCollectionRecord(COLLECTIONS.users, id, { status, updatedAt: new Date().toISOString() });
+  showToast(`User marked ${status}.`, "success");
+  await refreshActiveData();
+}
+
+async function savePrintSettings(event) {
+  event.preventDefault();
+  appSettings.print = {
+    paperSize: getValue("print-paper-size") || "A4",
+    copyCount: Math.max(1, getNumber("print-copy-count") || 1),
+    showGst: getValue("print-show-gst") || "yes",
+    footerNote: getValue("print-footer-note")
+  };
+  await saveAppSettings();
+  showToast("Print/PDF settings saved.", "success");
+}
+
+function populatePrintSettingsForm() {
+  const printSettings = appSettings.print || {};
+  setValue("print-paper-size", printSettings.paperSize || "A4");
+  setValue("print-copy-count", printSettings.copyCount || 1);
+  setValue("print-show-gst", printSettings.showGst || "yes");
+  setValue("print-footer-note", printSettings.footerNote || "");
+}
+
+function downloadAllOrdersCsv() {
+  const rows = getStoredRecords(KEYS.orders).map((order) => ({
+    id: order.id,
+    date: order.date || order.orderDate || "",
+    customer: order.customer || order.customerName || "",
+    phone: order.phone || order.customerPhone || "",
+    status: order.status || "",
+    paymentStatus: order.paymentStatus || "",
+    total: order.finalAmount || order.totalAmount || order.amount || 0
+  }));
+  if (!rows.length) {
+    showToast("No orders available for export.", "info");
+    return;
+  }
+  const headers = Object.keys(rows[0]);
+  const csv = [headers.join(","), ...rows.map((row) => headers.map((header) => csvEscape(row[header])).join(","))].join("\n");
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+  link.download = "all-orders-export.csv";
+  document.body.appendChild(link);
+  link.click();
+  URL.revokeObjectURL(link.href);
+  link.remove();
+}
+
 function initModuleSettingsPanel() {
   const settingsButton = document.getElementById("module-settings-btn");
   const modal = document.getElementById("module-settings-modal");
@@ -616,6 +782,9 @@ function renderModule(sectionId) {
       break;
     case "gstreports":
       renderGstReports();
+      break;
+    case "settings":
+      renderSettingsDashboard();
       break;
   }
 }

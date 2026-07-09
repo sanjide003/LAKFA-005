@@ -39,7 +39,8 @@ export const COLLECTIONS = {
   customerLedger: "customerLedger",
   orderPayments: "orderPayments",
   orderExpenses: "orderExpenses",
-  notifications: "notifications"
+  notifications: "notifications",
+  users: "users"
 };
 
 export function mapSnapshotRecords(snapshot) {

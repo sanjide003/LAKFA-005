@@ -1446,16 +1446,47 @@
         <section id="section-settings" class="app-section">
           <div class="section-header">
             <h2 class="section-title">System Configurations</h2>
+            <span style="font-size: 0.875rem; color: var(--text-muted);">Company, access, permissions, export and print settings</span>
           </div>
           <div class="settings-grid">
             <div class="card">
-              <div class="card-title">Firebase-backed Company Settings</div>
-              <p class="settings-help">Company identity, invoice address, contact details, website, social links, logo, and signature logo are saved in <code>settings/companyProfile</code>. Use the Company Profile module to edit these settings.</p>
+              <div class="card-title">Company Profile Summary</div>
+              <p class="settings-help">Company identity is saved in <code>settings/companyProfile</code>. Use the Company Profile module for full editing.</p>
               <table class="table settings-company-table">
                 <tr><td>Company</td><td data-company-name>Lakfa ERP</td></tr>
                 <tr><td>Email</td><td data-company-email></td></tr>
                 <tr><td>Phone</td><td data-company-phone></td></tr>
+                <tr><td>GSTIN</td><td id="settings-company-gst">-</td></tr>
               </table>
+            </div>
+            <div class="card">
+              <div class="card-title">Staff / Investor User</div>
+              <form id="staff-user-form">
+                <div class="form-grid-2"><div class="form-group"><label>Name</label><input type="text" id="staff-name" class="form-control" required></div><div class="form-group"><label>Email</label><input type="email" id="staff-email" class="form-control" required></div></div>
+                <div class="form-group"><label>Auth UID / User Doc ID (optional)</label><input type="text" id="staff-uid" class="form-control" placeholder="Paste Firebase Auth UID to bind this access profile"></div>
+                <div class="form-grid-2"><div class="form-group"><label>Role</label><select id="staff-role" class="form-control"><option value="staff">Staff</option><option value="manager">Manager</option><option value="investor">Investor</option><option value="admin">Admin</option></select></div><div class="form-group"><label>Status</label><select id="staff-status" class="form-control"><option value="active">Active</option><option value="inactive">Inactive</option></select></div></div>
+                <div class="form-group"><label>Permissions</label><div class="permission-grid"><label><input type="checkbox" data-permission="orders"> Orders</label><label><input type="checkbox" data-permission="inventory"> Inventory</label><label><input type="checkbox" data-permission="finance"> Finance</label><label><input type="checkbox" data-permission="reports"> Reports</label><label><input type="checkbox" data-permission="settings"> Settings</label><label><input type="checkbox" data-permission="production"> Production</label><label><input type="checkbox" data-permission="investors"> Investors</label></div></div>
+                <button type="submit" id="staff-user-submit-btn" class="btn-primary submit-btn" style="width:100%;">Save User Access</button>
+              </form>
+            </div>
+          </div>
+          <div class="settings-grid" style="margin-top:1.5rem;">
+            <div class="card"><div class="card-title">Investor Access</div><div id="settings-investor-access" class="table-responsive"></div></div>
+            <div class="card"><div class="card-title">Staff Users & Permissions</div><div id="settings-staff-users" class="table-responsive"></div></div>
+          </div>
+          <div class="settings-grid" style="margin-top:1.5rem;">
+            <div class="card">
+              <div class="card-title">Export Tools</div>
+              <p class="settings-help">Download operational data for backup, audit or spreadsheet review.</p>
+              <div class="form-grid-2"><button class="btn-primary" type="button" id="download-all-orders-csv-btn">Download All Orders CSV</button><button class="btn-secondary" type="button" data-report-export="balanceSheet" data-export-format="csv">Download Balance Sheet CSV</button></div>
+            </div>
+            <div class="card">
+              <div class="card-title">Print/PDF Settings</div>
+              <form id="print-settings-form">
+                <div class="form-grid-2"><div class="form-group"><label>Default Paper Size</label><select id="print-paper-size" class="form-control"><option>A4</option><option>A5</option><option>Letter</option></select></div><div class="form-group"><label>Invoice Copies</label><input type="number" id="print-copy-count" class="form-control" min="1" step="1"></div></div>
+                <div class="form-grid-2"><div class="form-group"><label>Show GST Split</label><select id="print-show-gst" class="form-control"><option value="yes">Yes</option><option value="no">No</option></select></div><div class="form-group"><label>Footer Note</label><input type="text" id="print-footer-note" class="form-control" placeholder="Thank you for your business"></div></div>
+                <button type="submit" id="print-settings-submit-btn" class="btn-primary" style="width:100%;">Save Print/PDF Settings</button>
+              </form>
             </div>
           </div>
         </section>
