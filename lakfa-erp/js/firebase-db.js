@@ -1,6 +1,6 @@
 /* Lakfa ERP Firestore Data Layer */
 import { auth, db } from "./firebase-config.js";
-import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, onSnapshot, query, serverTimestamp, setDoc, updateDoc, writeBatch } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, onSnapshot, query, serverTimestamp, setDoc, updateDoc, where, writeBatch } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
 export const COLLECTIONS = {
   products: "products",
@@ -52,6 +52,16 @@ export function mapSnapshotRecords(snapshot) {
 export function subscribeCollectionRecords(collectionName, onRecords, onError = console.error) {
   return onSnapshot(
     query(collection(db, collectionName)),
+    (snapshot) => onRecords(mapSnapshotRecords(snapshot)),
+    onError
+  );
+}
+
+
+export function subscribeCollectionWhere(collectionName, filters, onRecords, onError = console.error) {
+  const constraints = filters.map(([field, op, value]) => where(field, op, value));
+  return onSnapshot(
+    query(collection(db, collectionName), ...constraints),
     (snapshot) => onRecords(mapSnapshotRecords(snapshot)),
     onError
   );

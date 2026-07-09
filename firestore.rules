@@ -30,16 +30,53 @@ service cloud.firestore {
 
     function investorReportCollection(collectionName) {
       return collectionName in [
-        'investors',
         'profitSharing',
         'profitDistributions',
         'inventory',
         'expenses',
-        'income',
-        'investorExpenses',
-        'investorPaymentRequests',
-        'notifications'
+        'income'
       ];
+    }
+
+
+    function ownsInvestorPayload(data) {
+      return isInvestor()
+        && request.auth.token.email != null
+        && data.investorEmail == request.auth.token.email;
+    }
+
+    function targetsInvestor(data) {
+      return isInvestor()
+        && request.auth.token.email != null
+        && (data.targetInvestor == 'all'
+          || data.targetInvestorId == 'all'
+          || data.targetInvestorEmail == request.auth.token.email);
+    }
+
+    match /investors/{documentId} {
+      allow read: if isAdmin() || (isInvestor() && resource.data.email == request.auth.token.email);
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /investorPaymentRequests/{documentId} {
+      allow read: if isAdmin() || targetsInvestor(resource.data);
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /investorExpenses/{documentId} {
+      allow read: if isAdmin() || ownsInvestorPayload(resource.data);
+      allow create: if isAdmin() || ownsInvestorPayload(request.resource.data);
+      allow update: if isAdmin() || (ownsInvestorPayload(resource.data)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['notes', 'status', 'updatedAt', 'updatedBy'])
+        && request.resource.data.status in ['pending', 'cancelled']);
+      allow delete: if isAdmin();
+    }
+
+    match /notifications/{documentId} {
+      allow read: if isAdmin() || ownsInvestorPayload(resource.data);
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() || (ownsInvestorPayload(resource.data)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read', 'status', 'readAt', 'updatedAt', 'updatedBy']));
     }
 
     match /users/{userId} {
@@ -52,7 +89,7 @@ service cloud.firestore {
       allow create, update, delete: if isAdmin();
     }
 
-    // Admin-managed ERP collections include rawMaterials, rawMaterialLedger, stockLedger, supplierLedger,
+    // Owner-scoped investor collections are handled above; admin-managed ERP collections include rawMaterials, rawMaterialLedger, stockLedger, supplierLedger,
     // financeAccounts, financeCategories, financeTransfers, dailyAccounts, ledgerEntries,
     // productionBatches, inventory, and all other operational modules.
     match /{collectionName}/{documentId} {

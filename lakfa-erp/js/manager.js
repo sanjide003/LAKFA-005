@@ -25,6 +25,9 @@ const KEYS = {
   cashBook: "lakfa_cashbook",
   bankBook: "lakfa_bankbook",
   investors: "lakfa_investors",
+  investorExpenses: "lakfa_investor_expenses",
+  investorPaymentRequests: "lakfa_investor_payment_requests",
+  notifications: "lakfa_notifications",
   financeAccounts: "lakfa_finance_accounts",
   financeCategories: "lakfa_finance_categories",
   financeTransfers: "lakfa_finance_transfers",
@@ -50,13 +53,14 @@ const WRITABLE_FORM_IDS = new Set([
   "product-form", "customer-form", "supplier-form", "investors-form",
   "purchase-form", "inventory-form", "raw-material-form", "sales-form", "orders-form", "delivery-form",
   "expenses-form", "income-form", "cashbook-form", "bankbook-form", "production-form", "sharing-form",
-  "finance-account-form", "finance-category-form", "finance-transfer-form", "daily-account-form"
+  "finance-account-form", "finance-category-form", "finance-transfer-form", "daily-account-form", "payment-request-form"
 ]);
 const WRITABLE_KEYS = new Set([
   KEYS.products, KEYS.customers, KEYS.suppliers, KEYS.investors,
   KEYS.purchases, KEYS.inventory, KEYS.rawMaterials, KEYS.sales, KEYS.orders, KEYS.delivery,
   KEYS.expenses, KEYS.income, KEYS.cashBook, KEYS.bankBook, KEYS.production, KEYS.sharing,
-  KEYS.financeAccounts, KEYS.financeCategories, KEYS.financeTransfers, KEYS.dailyAccounts
+  KEYS.financeAccounts, KEYS.financeCategories, KEYS.financeTransfers, KEYS.dailyAccounts,
+  KEYS.investorExpenses, KEYS.investorPaymentRequests, KEYS.notifications
 ]);
 
 const COLLECTION_BY_KEY = {
@@ -83,6 +87,9 @@ const COLLECTION_BY_KEY = {
   [KEYS.financeTransfers]: COLLECTIONS.financeTransfers,
   [KEYS.dailyAccounts]: COLLECTIONS.dailyAccounts,
   [KEYS.investors]: COLLECTIONS.investors,
+  [KEYS.investorExpenses]: COLLECTIONS.investorExpenses,
+  [KEYS.investorPaymentRequests]: COLLECTIONS.investorPaymentRequests,
+  [KEYS.notifications]: COLLECTIONS.notifications,
   [KEYS.sharing]: COLLECTIONS.sharing
 };
 
@@ -113,6 +120,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   initProductionMaterialUi();
   initSupplierPurchaseUi();
   initCompanyFinanceUi();
+  initInvestorRequestUi();
 
   // 6. Initialize report export actions
   initReportExportActions();
@@ -562,6 +570,13 @@ function renderModule(sectionId) {
       break;
     case "investors":
       renderTable(KEYS.investors, "investors-table-body");
+      refreshInvestorRequestOptions();
+      break;
+    case "payment-requests":
+      renderPaymentRequestsDashboard();
+      break;
+    case "expense-approvals":
+      renderExpenseApprovalsDashboard();
       break;
     case "investment-sharing":
       renderTable(KEYS.sharing, "sharing-table-body");
@@ -1635,6 +1650,126 @@ async function submitSupplierPayment(event) {
   await commitBatchOperations(operations);
   showToast("Supplier payment recorded.", "success");
   closeSupplierPaymentModal();
+  await refreshActiveData();
+}
+
+
+
+
+let paymentRequestEditId = null;
+
+function initInvestorRequestUi() {
+  document.getElementById("payment-request-form")?.addEventListener("submit", saveInvestorPaymentRequest);
+  refreshInvestorRequestOptions();
+}
+
+function refreshInvestorRequestOptions() {
+  const select = document.getElementById("payreq-target");
+  if (!select) return;
+  const value = select.value;
+  select.innerHTML = `<option value="all">All Investors</option>` + getStoredRecords(KEYS.investors).map((investor) => `<option value="${escapeHtml(investor.id)}">${escapeHtml(investor.name)} (${escapeHtml(investor.email || '')})</option>`).join("");
+  select.value = value || "all";
+}
+
+function getInvestorById(id) {
+  return getStoredRecords(KEYS.investors).find((investor) => investor.id === id);
+}
+
+async function saveInvestorPaymentRequest(event) {
+  event.preventDefault();
+  const targetValue = getValue("payreq-target") || "all";
+  const targetInvestor = targetValue === "all" ? null : getInvestorById(targetValue);
+  const data = {
+    targetInvestor: targetValue === "all" ? "all" : targetInvestor?.id,
+    targetInvestorId: targetValue === "all" ? "all" : targetInvestor?.id,
+    targetInvestorName: targetValue === "all" ? "All Investors" : targetInvestor?.name,
+    targetInvestorEmail: targetValue === "all" ? "" : targetInvestor?.email,
+    amount: getNumber("payreq-amount"),
+    purpose: getValue("payreq-purpose"),
+    dueDate: getValue("payreq-due"),
+    status: getValue("payreq-status") || "Open",
+    notes: getValue("payreq-notes")
+  };
+  if (!data.targetInvestor || !data.purpose || data.amount <= 0 || !data.dueDate) return showToast("Complete payment request fields.", "error");
+  const id = paymentRequestEditId
+    ? (await updateCollectionRecord(COLLECTIONS.investorPaymentRequests, paymentRequestEditId, data), paymentRequestEditId)
+    : await createCollectionRecord(COLLECTIONS.investorPaymentRequests, data);
+  await createInvestorNotificationsForPaymentRequest(id, data);
+  paymentRequestEditId = null;
+  document.getElementById("payment-request-form")?.reset();
+  showToast("Investor payment request saved.", "success");
+  await refreshActiveData();
+}
+
+async function createInvestorNotificationsForPaymentRequest(requestId, request) {
+  const targets = request.targetInvestorId === "all" ? getStoredRecords(KEYS.investors) : [getInvestorById(request.targetInvestorId)].filter(Boolean);
+  const operations = targets.map((investor) => ({ type: "set", collectionName: COLLECTIONS.notifications, payload: {
+    userId: investor.userId || "", investorId: investor.id, investorEmail: investor.email || "", type: "payment-request", title: "New payment request", message: `${request.purpose} - ${formatCurrency(request.amount)} due ${request.dueDate}`, sourceId: requestId, read: false, status: "unread", createdForRole: "investor"
+  }}));
+  if (operations.length) await commitBatchOperations(operations);
+}
+
+function renderPaymentRequestsDashboard() {
+  refreshInvestorRequestOptions();
+  const tbody = document.getElementById("payment-requests-table-body");
+  if (!tbody) return;
+  const requests = getStoredRecords(KEYS.investorPaymentRequests);
+  tbody.innerHTML = requests.length ? requests.map((request) => `<tr><td>${escapeHtml(request.targetInvestorName || request.targetInvestor || 'All Investors')}</td><td><strong>${formatCurrency(request.amount)}</strong></td><td>${escapeHtml(request.purpose)}</td><td>${request.dueDate ? formatDate(request.dueDate) : '-'}</td><td><span class="badge ${request.status === 'Open' ? 'badge-warning' : request.status === 'Closed' ? 'badge-success' : 'badge-danger'}">${escapeHtml(request.status || 'Open')}</span></td><td class="text-right"><button class="btn-secondary btn-sm payreq-edit" data-id="${request.id}">Edit</button> <button class="btn-danger btn-sm payreq-delete" data-id="${request.id}">Delete</button></td></tr>`).join("") : `<tr><td colspan="6" class="text-center">No investor payment requests yet.</td></tr>`;
+  tbody.querySelectorAll(".payreq-edit").forEach((button) => button.addEventListener("click", () => editInvestorPaymentRequest(button.dataset.id)));
+  tbody.querySelectorAll(".payreq-delete").forEach((button) => button.addEventListener("click", () => deleteInvestorPaymentRequest(button.dataset.id)));
+}
+
+function editInvestorPaymentRequest(id) {
+  const request = getStoredRecords(KEYS.investorPaymentRequests).find((row) => row.id === id);
+  if (!request) return;
+  paymentRequestEditId = id;
+  setValue("payreq-target", request.targetInvestorId || request.targetInvestor || "all");
+  setValue("payreq-amount", request.amount); setValue("payreq-purpose", request.purpose); setValue("payreq-due", request.dueDate); setValue("payreq-status", request.status || "Open"); setValue("payreq-notes", request.notes);
+}
+
+async function deleteInvestorPaymentRequest(id) {
+  if (!confirm("Delete this investor payment request?")) return;
+  await deleteCollectionRecord(COLLECTIONS.investorPaymentRequests, id);
+  showToast("Payment request deleted.", "success");
+  await refreshActiveData();
+}
+
+function renderExpenseApprovalsDashboard() {
+  const tbody = document.getElementById("expense-approvals-table-body");
+  if (!tbody) return;
+  const requests = getStoredRecords(KEYS.investorExpenses);
+  const pending = requests.filter((request) => (request.status || "pending").toLowerCase() === "pending");
+  const approved = requests.filter((request) => (request.status || "").toLowerCase() === "approved");
+  const summary = document.getElementById("expense-approval-summary");
+  if (summary) summary.innerHTML = `<div class="dashboard-card"><div class="card-header">Pending</div><div class="card-value">${pending.length}</div></div><div class="dashboard-card"><div class="card-header">Approved Contributions</div><div class="card-value">${formatCurrency(approved.reduce((s,r)=>s+getNumberFromValue(r.amount),0))}</div></div>`;
+  tbody.innerHTML = requests.length ? requests.map((request) => {
+    const status = (request.status || "pending").toLowerCase();
+    return `<tr><td>${request.date ? formatDate(request.date) : '-'}</td><td>${escapeHtml(request.investorName || request.investorEmail || '-')}</td><td>${escapeHtml(request.purpose || '-')}</td><td><strong>${formatCurrency(request.amount)}</strong></td><td><span class="badge ${status === 'approved' ? 'badge-success' : status === 'rejected' ? 'badge-danger' : 'badge-warning'}">${escapeHtml(request.status || 'pending')}</span></td><td>${escapeHtml(request.notes || '')}</td><td class="text-right">${status === 'pending' ? `<button class="btn-primary btn-sm approval-approve" data-id="${request.id}">Approve</button> <button class="btn-danger btn-sm approval-reject" data-id="${request.id}">Reject</button>` : 'Completed'}</td></tr>`;
+  }).join("") : `<tr><td colspan="7" class="text-center">No investor expense requests yet.</td></tr>`;
+  tbody.querySelectorAll(".approval-approve").forEach((button) => button.addEventListener("click", () => approveInvestorExpense(button.dataset.id)));
+  tbody.querySelectorAll(".approval-reject").forEach((button) => button.addEventListener("click", () => rejectInvestorExpense(button.dataset.id)));
+}
+
+async function approveInvestorExpense(id) {
+  const request = getStoredRecords(KEYS.investorExpenses).find((row) => row.id === id);
+  if (!request) return;
+  const investor = getInvestorById(request.investorId) || getStoredRecords(KEYS.investors).find((row) => row.email === request.investorEmail);
+  const operations = [{ type: "update", collectionName: COLLECTIONS.investorExpenses, id, payload: { status: "approved", approvedAt: new Date().toISOString(), approvedAmount: getNumberFromValue(request.amount) } }];
+  if (investor?.id) operations.push({ type: "update", collectionName: COLLECTIONS.investors, id: investor.id, payload: { amount: getNumberFromValue(investor.amount) + getNumberFromValue(request.amount), lastContributionAt: new Date().toISOString() } });
+  operations.push({ type: "set", collectionName: COLLECTIONS.notifications, payload: { investorId: request.investorId || investor?.id || "", investorEmail: request.investorEmail || investor?.email || "", type: "expense-approved", title: "Contribution approved", message: `${request.purpose} approved for ${formatCurrency(request.amount)}`, sourceId: id, read: false, status: "unread", createdForRole: "investor" } });
+  await commitBatchOperations(operations);
+  showToast("Investor contribution approved.", "success");
+  await refreshActiveData();
+}
+
+async function rejectInvestorExpense(id) {
+  const request = getStoredRecords(KEYS.investorExpenses).find((row) => row.id === id);
+  if (!request) return;
+  await commitBatchOperations([
+    { type: "update", collectionName: COLLECTIONS.investorExpenses, id, payload: { status: "rejected", rejectedAt: new Date().toISOString() } },
+    { type: "set", collectionName: COLLECTIONS.notifications, payload: { investorId: request.investorId || "", investorEmail: request.investorEmail || "", type: "expense-rejected", title: "Contribution rejected", message: `${request.purpose} was rejected`, sourceId: id, read: false, status: "unread", createdForRole: "investor" } }
+  ]);
+  showToast("Investor contribution rejected.", "success");
   await refreshActiveData();
 }
 
@@ -4522,6 +4657,8 @@ function activeSectionKey() {
     customers: KEYS.customers,
     suppliers: KEYS.suppliers,
     investors: KEYS.investors,
+    "payment-requests": KEYS.investorPaymentRequests,
+    "expense-approvals": KEYS.investorExpenses,
     purchase: KEYS.purchases,
     inventory: KEYS.inventory,
     sales: KEYS.sales,
