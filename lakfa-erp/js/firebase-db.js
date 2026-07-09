@@ -1,6 +1,6 @@
 /* Lakfa ERP Firestore Data Layer */
 import { auth, db } from "./firebase-config.js";
-import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, query, serverTimestamp, setDoc, updateDoc, writeBatch } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, onSnapshot, query, serverTimestamp, setDoc, updateDoc, writeBatch } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
 export const COLLECTIONS = {
   products: "products",
@@ -17,15 +17,82 @@ export const COLLECTIONS = {
   cashBook: "cashbook",
   bankBook: "bankbook",
   investors: "investors",
-  sharing: "profitSharing"
+  sharing: "profitSharing",
+  rawMaterials: "rawMaterials",
+  rawMaterialLedger: "rawMaterialLedger",
+  stockLedger: "stockLedger",
+  ledgerEntries: "ledgerEntries",
+  auditLogs: "auditLogs",
+  investorExpenses: "investorExpenses",
+  investorPaymentRequests: "investorPaymentRequests",
+  profitDistributions: "profitDistributions",
+  employees: "employees",
+  salaryPayments: "salaryPayments",
+  assets: "assets",
+  managerLoans: "managerLoans",
+  loanRepayments: "loanRepayments",
+  financeAccounts: "financeAccounts",
+  financeCategories: "financeCategories",
+  financeTransfers: "financeTransfers",
+  dailyAccounts: "dailyAccounts",
+  supplierLedger: "supplierLedger",
+  customerLedger: "customerLedger",
+  orderPayments: "orderPayments",
+  orderExpenses: "orderExpenses",
+  notifications: "notifications"
 };
 
-export async function getCollectionRecords(collectionName) {
-  const snapshot = await getDocs(query(collection(db, collectionName)));
+export function mapSnapshotRecords(snapshot) {
   return snapshot.docs.map((docSnap) => ({
     id: docSnap.id,
     ...docSnap.data()
   }));
+}
+
+export function subscribeCollectionRecords(collectionName, onRecords, onError = console.error) {
+  return onSnapshot(
+    query(collection(db, collectionName)),
+    (snapshot) => onRecords(mapSnapshotRecords(snapshot)),
+    onError
+  );
+}
+
+export function subscribeCollections(collectionMap, onCollectionRecords, onError = console.error) {
+  const entries = Object.entries(collectionMap);
+  const initialKeys = new Set(entries.map(([key]) => key));
+  let resolveInitialLoad;
+  const initialLoad = new Promise((resolve) => {
+    resolveInitialLoad = resolve;
+  });
+
+  const markLoaded = (key) => {
+    initialKeys.delete(key);
+    if (initialKeys.size === 0) resolveInitialLoad();
+  };
+
+  const unsubscribers = entries.map(([key, collectionName]) => subscribeCollectionRecords(
+    collectionName,
+    (records) => {
+      onCollectionRecords(key, records, collectionName);
+      markLoaded(key);
+    },
+    (error) => {
+      markLoaded(key);
+      onError(error, key, collectionName);
+    }
+  ));
+
+  if (entries.length === 0) resolveInitialLoad();
+
+  return {
+    initialLoad,
+    unsubscribe: () => unsubscribers.forEach((unsubscribe) => unsubscribe())
+  };
+}
+
+export async function getCollectionRecords(collectionName) {
+  const snapshot = await getDocs(query(collection(db, collectionName)));
+  return mapSnapshotRecords(snapshot);
 }
 
 export async function getAllCollections(collectionMap) {
@@ -119,4 +186,35 @@ export async function commitBatchOperations(operations = []) {
 
   await batch.commit();
   return generatedIds;
+}
+
+
+export async function postAuditLog(action, payload = {}) {
+  return createCollectionRecord(COLLECTIONS.auditLogs, {
+    action,
+    module: payload.module || "system",
+    recordId: payload.recordId || null,
+    summary: payload.summary || "",
+    before: payload.before || null,
+    after: payload.after || null,
+    metadata: payload.metadata || {},
+    eventAt: serverTimestamp()
+  });
+}
+
+export async function postLedgerEntry(entry = {}) {
+  return createCollectionRecord(COLLECTIONS.ledgerEntries, {
+    date: entry.date || new Date().toISOString().slice(0, 10),
+    module: entry.module || "general",
+    account: entry.account || "General",
+    type: entry.type || "journal",
+    debit: Number(entry.debit || 0),
+    credit: Number(entry.credit || 0),
+    referenceCollection: entry.referenceCollection || null,
+    referenceId: entry.referenceId || null,
+    partyType: entry.partyType || null,
+    partyId: entry.partyId || null,
+    description: entry.description || "",
+    status: entry.status || "posted"
+  });
 }

@@ -1,7 +1,7 @@
 /* Lakfa ERP Manager Controller */
 import { logoutUser } from "./role-guard.js";
 import { formatCurrency, formatDate, getFirebaseErrorMessage, showToast } from "./utils.js";
-import { COLLECTIONS, commitBatchOperations, createCollectionRecord, deleteCollectionRecord, getAllCollections, getDocument, saveDocument, updateCollectionRecord } from "./firebase-db.js";
+import { COLLECTIONS, commitBatchOperations, createCollectionRecord, deleteCollectionRecord, getDocument, saveDocument, subscribeCollections, updateCollectionRecord } from "./firebase-db.js";
 import { initCompanyProfileForm, loadCompanyProfile } from "./company-profile.js";
 
 // Keys mapped to Firestore collections
@@ -26,6 +26,8 @@ const KEYS = {
 // Global state tracker for read-only Firestore data
 let currentEditId = null;
 let firestoreState = {};
+let realtimeSubscription = null;
+let realtimeDataReady = false;
 let activeSectionId = "dashboard";
 let activeOrderView = "pending";
 let activeDueFilter = "all";
@@ -106,9 +108,27 @@ document.addEventListener("DOMContentLoaded", async () => {
 });
 
 async function loadFirestoreData() {
+  if (realtimeSubscription) return realtimeSubscription.initialLoad;
+
   try {
-    setGlobalLoading(true, "Loading Firebase ERP data...");
-    firestoreState = await getAllCollections(COLLECTION_BY_KEY);
+    setGlobalLoading(true, "Connecting to live Firebase ERP data...");
+    realtimeSubscription = subscribeCollections(
+      COLLECTION_BY_KEY,
+      (key, records) => {
+        firestoreState[key] = records;
+        if (realtimeDataReady) {
+          renderModule(activeSectionId);
+          updateDashboardMetrics();
+        }
+      },
+      (err, key, collectionName) => {
+        console.error(`Realtime listener failed for ${collectionName || key}`, err);
+        showToast(getFirebaseErrorMessage(err, `Unable to sync ${collectionName || key}.`), "error");
+      }
+    );
+
+    await realtimeSubscription.initialLoad;
+    realtimeDataReady = true;
   } catch (err) {
     console.error("Error loading Firestore data", err);
     showToast(getFirebaseErrorMessage(err, "Unable to load Firebase ERP data."), "error");
@@ -3419,6 +3439,10 @@ async function refreshActiveData() {
   renderModule(activeSectionId);
   updateDashboardMetrics();
 }
+
+window.addEventListener("beforeunload", () => {
+  realtimeSubscription?.unsubscribe();
+});
 
 function getValue(id) {
   return document.getElementById(id)?.value.trim() || "";

@@ -32,9 +32,13 @@ service cloud.firestore {
       return collectionName in [
         'investors',
         'profitSharing',
+        'profitDistributions',
         'inventory',
         'expenses',
-        'income'
+        'income',
+        'investorExpenses',
+        'investorPaymentRequests',
+        'notifications'
       ];
     }
 

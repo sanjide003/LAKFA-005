@@ -3,7 +3,23 @@ import { logoutUser } from "./role-guard.js";
 import { formatCurrency, formatDate } from "./utils.js";
 import { auth } from "./firebase-config.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-import { COLLECTIONS, getCollectionRecords } from "./firebase-db.js";
+import { COLLECTIONS, subscribeCollections } from "./firebase-db.js";
+
+const INVESTOR_COLLECTIONS = {
+  investors: COLLECTIONS.investors,
+  sharing: COLLECTIONS.sharing,
+  inventory: COLLECTIONS.inventory,
+  expenses: COLLECTIONS.expenses,
+  income: COLLECTIONS.income,
+  investorExpenses: COLLECTIONS.investorExpenses,
+  investorPaymentRequests: COLLECTIONS.investorPaymentRequests,
+  profitDistributions: COLLECTIONS.profitDistributions,
+  notifications: COLLECTIONS.notifications
+};
+
+let investorState = Object.fromEntries(Object.keys(INVESTOR_COLLECTIONS).map((key) => [key, []]));
+let investorSubscription = null;
+let activeInvestorEmail = "";
 
 document.addEventListener("DOMContentLoaded", () => {
   const logoutBtn = document.getElementById("logout-btn");
@@ -13,20 +29,44 @@ document.addEventListener("DOMContentLoaded", () => {
 
   onAuthStateChanged(auth, async (user) => {
     if (user) {
-      await loadInvestorDashboard(user.email);
+      activeInvestorEmail = user.email || "";
+      await initInvestorRealtimeDashboard(activeInvestorEmail);
     }
   });
 });
 
-async function loadInvestorDashboard(email) {
+async function initInvestorRealtimeDashboard(email) {
+  if (investorSubscription) {
+    renderInvestorDashboard(email);
+    return;
+  }
+
+  investorSubscription = subscribeCollections(
+    INVESTOR_COLLECTIONS,
+    (key, records) => {
+      investorState[key] = records;
+      if (activeInvestorEmail) renderInvestorDashboard(activeInvestorEmail);
+    },
+    (err, key, collectionName) => {
+      console.error(`Investor realtime listener failed for ${collectionName || key}`, err);
+      renderMissingInvestor(email, "Unable to sync Firebase data. Please contact admin.");
+    }
+  );
+
+  await investorSubscription.initialLoad;
+  renderInvestorDashboard(email);
+}
+
+function renderInvestorDashboard(email) {
   try {
-    const [investorsList, sharingHistory, inventory, expenses, income] = await Promise.all([
-      getCollectionRecords(COLLECTIONS.investors),
-      getCollectionRecords(COLLECTIONS.sharing),
-      getCollectionRecords(COLLECTIONS.inventory),
-      getCollectionRecords(COLLECTIONS.expenses),
-      getCollectionRecords(COLLECTIONS.income)
-    ]);
+    const investorsList = investorState.investors || [];
+    const sharingHistory = [
+      ...(investorState.sharing || []),
+      ...(investorState.profitDistributions || [])
+    ];
+    const inventory = investorState.inventory || [];
+    const expenses = investorState.expenses || [];
+    const income = investorState.income || [];
 
     const investorProfile = investorsList.find((inv) => inv.email?.toLowerCase() === email?.toLowerCase());
 
@@ -82,10 +122,14 @@ async function loadInvestorDashboard(email) {
     renderExpenseTable(expenses);
     renderIncomeTable(income);
   } catch (err) {
-    console.error("Unable to load investor dashboard from Firebase", err);
+    console.error("Unable to render investor dashboard from Firebase", err);
     renderMissingInvestor(email, "Unable to load Firebase data. Please contact admin.");
   }
 }
+
+window.addEventListener("beforeunload", () => {
+  investorSubscription?.unsubscribe();
+});
 
 function renderMissingInvestor(email, message = "No investor profile is assigned to this login. Please contact admin.") {
   document.getElementById("investor-display-name").textContent = email || "Investor";
