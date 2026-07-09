@@ -77,6 +77,7 @@
         <div class="sidebar-group">
           <button class="sidebar-group-toggle" type="button"><span>Cash, Bank & Assets</span><span class="chevron">⌄</span></button>
           <div class="sidebar-submenu">
+            <a href="#" class="sidebar-item" data-section="company-finance"><span class="icon" data-icon="accounting"></span> Company Finance</a>
             <a href="#" class="sidebar-item" data-section="bankbook"><span class="icon" data-icon="bank"></span> Bank Accounts</a>
             <a href="#" class="sidebar-item" data-section="cashbook"><span class="icon" data-icon="cash"></span> Cash In Hand</a>
           </div>
@@ -1036,6 +1037,84 @@
               </table>
             </div>
           </div>
+        </section>
+
+
+        <!-- ================= COMPANY FINANCE MODULE ================= -->
+        <section id="section-company-finance" class="app-section">
+          <div class="section-header"><h2 class="section-title">Company Finance</h2></div>
+          <div class="dashboard-grid" id="finance-balance-cards"></div>
+          <div class="module-layout">
+            <div class="card">
+              <div class="card-title">Account Master</div>
+              <form id="finance-account-form">
+                <input type="hidden" id="fin-account-id">
+                <div class="form-group"><label>Account Name</label><input type="text" id="fin-account-name" class="form-control" required></div>
+                <div class="form-grid-2">
+                  <div class="form-group"><label>Type</label><select id="fin-account-type" class="form-control"><option>Cash</option><option>Bank</option><option>UPI</option><option>Card</option><option>Other</option></select></div>
+                  <div class="form-group"><label>Status</label><select id="fin-account-status" class="form-control"><option>Active</option><option>Inactive</option></select></div>
+                </div>
+                <div class="form-grid-2">
+                  <div class="form-group"><label>Opening Balance ₹</label><input type="number" id="fin-account-opening" class="form-control" step="0.01" value="0"></div>
+                  <div class="form-group"><label>Current Balance ₹</label><input type="number" id="fin-account-current" class="form-control" step="0.01" readonly></div>
+                </div>
+                <button type="submit" id="finance-account-submit-btn" class="btn-primary submit-btn" style="width:100%;">Save Account</button>
+              </form>
+            </div>
+            <div class="card">
+              <div class="card-title">Finance Category</div>
+              <form id="finance-category-form">
+                <input type="hidden" id="fin-category-id">
+                <div class="form-group"><label>Category Name</label><input type="text" id="fin-category-name" class="form-control" required></div>
+                <div class="form-grid-2">
+                  <div class="form-group"><label>Type</label><select id="fin-category-type" class="form-control"><option>Income</option><option>Expense</option></select></div>
+                  <div class="form-group"><label>Status</label><select id="fin-category-status" class="form-control"><option>Active</option><option>Inactive</option></select></div>
+                </div>
+                <div class="form-group"><label>Notes</label><input type="text" id="fin-category-notes" class="form-control"></div>
+                <button type="submit" id="finance-category-submit-btn" class="btn-primary submit-btn" style="width:100%;">Save Category</button>
+              </form>
+            </div>
+          </div>
+          <div class="module-layout">
+            <div class="card">
+              <div class="card-title">Income / Expense Entry</div>
+              <form id="daily-account-form">
+                <input type="hidden" id="daily-account-id">
+                <div class="form-grid-2"><div class="form-group"><label>Date</label><input type="date" id="daily-date" class="form-control" required></div><div class="form-group"><label>Type</label><select id="daily-type" class="form-control"><option>Income</option><option>Expense</option></select></div></div>
+                <div class="form-grid-2"><div class="form-group"><label>Account</label><select id="daily-account" class="form-control" required></select></div><div class="form-group"><label>Category</label><select id="daily-category" class="form-control" required></select></div></div>
+                <div class="form-group"><label>Description</label><input type="text" id="daily-desc" class="form-control" required></div>
+                <div class="form-grid-2"><div class="form-group"><label>Amount ₹</label><input type="number" id="daily-amount" class="form-control" min="0.01" step="0.01" required></div><div class="form-group"><label>Reference</label><input type="text" id="daily-ref" class="form-control"></div></div>
+                <button type="submit" id="daily-account-submit-btn" class="btn-primary submit-btn" style="width:100%;">Save Entry</button>
+              </form>
+            </div>
+            <div class="card">
+              <div class="card-title">Account Transfer</div>
+              <form id="finance-transfer-form">
+                <input type="hidden" id="fin-transfer-id">
+                <div class="form-group"><label>Date</label><input type="date" id="fin-transfer-date" class="form-control" required></div>
+                <div class="form-grid-2"><div class="form-group"><label>From Account</label><select id="fin-transfer-from" class="form-control" required></select></div><div class="form-group"><label>To Account</label><select id="fin-transfer-to" class="form-control" required></select></div></div>
+                <div class="form-grid-2"><div class="form-group"><label>Amount ₹</label><input type="number" id="fin-transfer-amount" class="form-control" min="0.01" step="0.01" required></div><div class="form-group"><label>Reference</label><input type="text" id="fin-transfer-ref" class="form-control"></div></div>
+                <div class="form-group"><label>Notes</label><input type="text" id="fin-transfer-notes" class="form-control"></div>
+                <button type="submit" id="finance-transfer-submit-btn" class="btn-primary submit-btn" style="width:100%;">Save Transfer</button>
+              </form>
+            </div>
+          </div>
+          <div class="card" style="margin-bottom:1rem;">
+            <div class="card-title">Filters</div>
+            <div class="form-grid-3">
+              <div class="form-group"><label>From</label><input type="date" id="finance-filter-from" class="form-control"></div>
+              <div class="form-group"><label>To</label><input type="date" id="finance-filter-to" class="form-control"></div>
+              <div class="form-group"><label>Account</label><select id="finance-filter-account" class="form-control"><option value="">All Accounts</option></select></div>
+            </div>
+            <div class="form-grid-2">
+              <div class="form-group"><label>Category</label><select id="finance-filter-category" class="form-control"><option value="">All Categories</option></select></div>
+              <div class="form-group" style="align-self:end;"><button type="button" id="finance-clear-filters-btn" class="btn-secondary">Clear Filters</button></div>
+            </div>
+          </div>
+          <div class="table-responsive"><table><thead><tr><th>Account</th><th>Type</th><th>Opening</th><th>Current</th><th>Status</th><th>Actions</th></tr></thead><tbody id="finance-accounts-table-body"></tbody></table></div>
+          <div class="table-responsive"><table><thead><tr><th>Category</th><th>Type</th><th>Status</th><th>Notes</th><th>Actions</th></tr></thead><tbody id="finance-categories-table-body"></tbody></table></div>
+          <div class="table-responsive"><table><thead><tr><th>Date</th><th>Type</th><th>Account</th><th>Category</th><th>Description</th><th>Amount</th><th>Status</th><th>Actions</th></tr></thead><tbody id="daily-accounts-table-body"></tbody></table></div>
+          <div class="table-responsive"><table><thead><tr><th>Date</th><th>From</th><th>To</th><th>Amount</th><th>Reference</th><th>Status</th><th>Actions</th></tr></thead><tbody id="finance-transfers-table-body"></tbody></table></div>
         </section>
 
         <!-- ================= ACCOUNTING MODULE ================= -->

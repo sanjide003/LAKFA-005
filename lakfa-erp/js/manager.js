@@ -25,6 +25,10 @@ const KEYS = {
   cashBook: "lakfa_cashbook",
   bankBook: "lakfa_bankbook",
   investors: "lakfa_investors",
+  financeAccounts: "lakfa_finance_accounts",
+  financeCategories: "lakfa_finance_categories",
+  financeTransfers: "lakfa_finance_transfers",
+  dailyAccounts: "lakfa_daily_accounts",
   sharing: "lakfa_sharing"
 };
 
@@ -45,12 +49,14 @@ const READ_ONLY_MESSAGE = "This module is read-only until its Firestore write wo
 const WRITABLE_FORM_IDS = new Set([
   "product-form", "customer-form", "supplier-form", "investors-form",
   "purchase-form", "inventory-form", "raw-material-form", "sales-form", "orders-form", "delivery-form",
-  "expenses-form", "income-form", "cashbook-form", "bankbook-form", "production-form", "sharing-form"
+  "expenses-form", "income-form", "cashbook-form", "bankbook-form", "production-form", "sharing-form",
+  "finance-account-form", "finance-category-form", "finance-transfer-form", "daily-account-form"
 ]);
 const WRITABLE_KEYS = new Set([
   KEYS.products, KEYS.customers, KEYS.suppliers, KEYS.investors,
   KEYS.purchases, KEYS.inventory, KEYS.rawMaterials, KEYS.sales, KEYS.orders, KEYS.delivery,
-  KEYS.expenses, KEYS.income, KEYS.cashBook, KEYS.bankBook, KEYS.production, KEYS.sharing
+  KEYS.expenses, KEYS.income, KEYS.cashBook, KEYS.bankBook, KEYS.production, KEYS.sharing,
+  KEYS.financeAccounts, KEYS.financeCategories, KEYS.financeTransfers, KEYS.dailyAccounts
 ]);
 
 const COLLECTION_BY_KEY = {
@@ -72,6 +78,10 @@ const COLLECTION_BY_KEY = {
   [KEYS.income]: COLLECTIONS.income,
   [KEYS.cashBook]: COLLECTIONS.cashBook,
   [KEYS.bankBook]: COLLECTIONS.bankBook,
+  [KEYS.financeAccounts]: COLLECTIONS.financeAccounts,
+  [KEYS.financeCategories]: COLLECTIONS.financeCategories,
+  [KEYS.financeTransfers]: COLLECTIONS.financeTransfers,
+  [KEYS.dailyAccounts]: COLLECTIONS.dailyAccounts,
   [KEYS.investors]: COLLECTIONS.investors,
   [KEYS.sharing]: COLLECTIONS.sharing
 };
@@ -102,6 +112,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   initOrderManagementUi();
   initProductionMaterialUi();
   initSupplierPurchaseUi();
+  initCompanyFinanceUi();
 
   // 6. Initialize report export actions
   initReportExportActions();
@@ -542,6 +553,9 @@ function renderModule(sectionId) {
       break;
     case "bankbook":
       renderBankBookTable();
+      break;
+    case "company-finance":
+      renderCompanyFinanceDashboard();
       break;
     case "accounting":
       renderAccountingSummary();
@@ -1625,6 +1639,326 @@ async function submitSupplierPayment(event) {
 }
 
 
+
+const financeEditIds = { account: null, category: null, transfer: null, daily: null };
+
+function initCompanyFinanceUi() {
+  document.getElementById("finance-account-form")?.addEventListener("submit", saveFinanceAccount);
+  document.getElementById("finance-category-form")?.addEventListener("submit", saveFinanceCategory);
+  document.getElementById("finance-transfer-form")?.addEventListener("submit", saveFinanceTransfer);
+  document.getElementById("daily-account-form")?.addEventListener("submit", saveDailyAccount);
+  document.getElementById("daily-type")?.addEventListener("change", refreshFinanceOptions);
+  ["finance-filter-from", "finance-filter-to", "finance-filter-account", "finance-filter-category"].forEach((id) => {
+    document.getElementById(id)?.addEventListener("change", renderCompanyFinanceDashboard);
+  });
+  document.getElementById("finance-clear-filters-btn")?.addEventListener("click", () => {
+    ["finance-filter-from", "finance-filter-to", "finance-filter-account", "finance-filter-category"].forEach((id) => setValue(id, ""));
+    renderCompanyFinanceDashboard();
+  });
+  refreshFinanceOptions();
+}
+
+function getAccountName(accountId) {
+  return getStoredRecords(KEYS.financeAccounts).find((account) => account.id === accountId)?.accountName || "-";
+}
+
+function getCategoryName(categoryId) {
+  return getStoredRecords(KEYS.financeCategories).find((category) => category.id === categoryId)?.categoryName || "-";
+}
+
+function getFinanceAccountBalance(account) {
+  if (!account) return 0;
+  const opening = getNumberFromValue(account.openingBalance);
+  const dailyDelta = getStoredRecords(KEYS.dailyAccounts)
+    .filter((entry) => entry.accountId === account.id && entry.status !== "Voided")
+    .reduce((sum, entry) => sum + (entry.type === "Income" ? getNumberFromValue(entry.amount) : -getNumberFromValue(entry.amount)), 0);
+  const transferDelta = getStoredRecords(KEYS.financeTransfers)
+    .filter((entry) => entry.status !== "Voided")
+    .reduce((sum, entry) => {
+      if (entry.fromAccountId === account.id) return sum - getNumberFromValue(entry.amount);
+      if (entry.toAccountId === account.id) return sum + getNumberFromValue(entry.amount);
+      return sum;
+    }, 0);
+  return opening + dailyDelta + transferDelta;
+}
+
+function refreshFinanceOptions() {
+  const accounts = getStoredRecords(KEYS.financeAccounts).filter((account) => account.status !== "Inactive");
+  const categories = getStoredRecords(KEYS.financeCategories).filter((category) => category.status !== "Inactive");
+  const accountOptions = `<option value="">Select account</option>` + accounts.map((account) => `<option value="${escapeHtml(account.id)}">${escapeHtml(account.accountName)} (${escapeHtml(account.type || '')})</option>`).join("");
+  ["daily-account", "fin-transfer-from", "fin-transfer-to"].forEach((id) => {
+    const select = document.getElementById(id);
+    if (!select) return;
+    const value = select.value;
+    select.innerHTML = accountOptions;
+    select.value = value;
+  });
+  const filterAccount = document.getElementById("finance-filter-account");
+  if (filterAccount) {
+    const value = filterAccount.value;
+    filterAccount.innerHTML = `<option value="">All Accounts</option>` + accounts.map((account) => `<option value="${escapeHtml(account.id)}">${escapeHtml(account.accountName)}</option>`).join("");
+    filterAccount.value = value;
+  }
+  const selectedType = getValue("daily-type") || "Income";
+  const categoryOptions = `<option value="">Select category</option>` + categories
+    .filter((category) => category.type === selectedType)
+    .map((category) => `<option value="${escapeHtml(category.id)}">${escapeHtml(category.categoryName)}</option>`).join("");
+  const dailyCategory = document.getElementById("daily-category");
+  if (dailyCategory) {
+    const value = dailyCategory.value;
+    dailyCategory.innerHTML = categoryOptions;
+    dailyCategory.value = value;
+  }
+  const filterCategory = document.getElementById("finance-filter-category");
+  if (filterCategory) {
+    const value = filterCategory.value;
+    filterCategory.innerHTML = `<option value="">All Categories</option>` + categories.map((category) => `<option value="${escapeHtml(category.id)}">${escapeHtml(category.categoryName)} (${escapeHtml(category.type)})</option>`).join("");
+    filterCategory.value = value;
+  }
+}
+
+function passesFinanceFilters(record) {
+  const from = getValue("finance-filter-from");
+  const to = getValue("finance-filter-to");
+  const accountId = getValue("finance-filter-account");
+  const categoryId = getValue("finance-filter-category");
+  if (from && String(record.date || "") < from) return false;
+  if (to && String(record.date || "") > to) return false;
+  if (accountId && record.accountId !== accountId && record.fromAccountId !== accountId && record.toAccountId !== accountId) return false;
+  if (categoryId && record.categoryId !== categoryId) return false;
+  return true;
+}
+
+function renderCompanyFinanceDashboard() {
+  refreshFinanceOptions();
+  const accounts = getStoredRecords(KEYS.financeAccounts);
+  const categories = getStoredRecords(KEYS.financeCategories);
+  const daily = getStoredRecords(KEYS.dailyAccounts).filter(passesFinanceFilters);
+  const transfers = getStoredRecords(KEYS.financeTransfers).filter(passesFinanceFilters);
+  const totalIncome = daily.filter((entry) => entry.type === "Income" && entry.status !== "Voided").reduce((sum, entry) => sum + getNumberFromValue(entry.amount), 0);
+  const totalExpense = daily.filter((entry) => entry.type === "Expense" && entry.status !== "Voided").reduce((sum, entry) => sum + getNumberFromValue(entry.amount), 0);
+  const totalCash = accounts.filter((account) => account.type === "Cash").reduce((sum, account) => sum + getFinanceAccountBalance(account), 0);
+  const totalBank = accounts.filter((account) => ["Bank", "UPI", "Card"].includes(account.type)).reduce((sum, account) => sum + getFinanceAccountBalance(account), 0);
+  const cards = document.getElementById("finance-balance-cards");
+  if (cards) {
+    cards.innerHTML = `
+      <div class="dashboard-card"><div class="card-header">Total Income</div><div class="card-value">${formatCurrency(totalIncome)}</div><div class="card-footer">Filtered daily accounts</div></div>
+      <div class="dashboard-card"><div class="card-header">Total Expense</div><div class="card-value" style="color:var(--danger);">${formatCurrency(totalExpense)}</div><div class="card-footer">Filtered daily accounts</div></div>
+      <div class="dashboard-card"><div class="card-header">Net Balance</div><div class="card-value">${formatCurrency(totalIncome - totalExpense)}</div><div class="card-footer">Income - expense</div></div>
+      <div class="dashboard-card"><div class="card-header">Cash Balance</div><div class="card-value">${formatCurrency(totalCash)}</div><div class="card-footer">Ledger based cash</div></div>
+      <div class="dashboard-card"><div class="card-header">Bank/UPI Balance</div><div class="card-value">${formatCurrency(totalBank)}</div><div class="card-footer">Ledger based bank</div></div>
+    `;
+  }
+  renderFinanceAccounts(accounts);
+  renderFinanceCategories(categories);
+  renderDailyAccounts(daily);
+  renderFinanceTransfers(transfers);
+}
+
+function renderFinanceAccounts(accounts) {
+  const tbody = document.getElementById("finance-accounts-table-body");
+  if (!tbody) return;
+  tbody.innerHTML = accounts.length ? accounts.map((account) => `
+    <tr><td><strong>${escapeHtml(account.accountName)}</strong></td><td>${escapeHtml(account.type)}</td><td>${formatCurrency(account.openingBalance)}</td><td><strong>${formatCurrency(getFinanceAccountBalance(account))}</strong></td><td><span class="badge ${account.status === 'Active' ? 'badge-success' : 'badge-danger'}">${escapeHtml(account.status || 'Active')}</span></td><td class="text-right"><button class="btn-secondary btn-sm finance-account-edit" data-id="${account.id}">Edit</button> <button class="btn-danger btn-sm finance-account-delete" data-id="${account.id}">Delete</button></td></tr>
+  `).join("") : `<tr><td colspan="6" class="text-center">No finance accounts yet.</td></tr>`;
+  tbody.querySelectorAll(".finance-account-edit").forEach((btn) => btn.addEventListener("click", () => editFinanceAccount(btn.dataset.id)));
+  tbody.querySelectorAll(".finance-account-delete").forEach((btn) => btn.addEventListener("click", () => deleteFinanceRecord(KEYS.financeAccounts, btn.dataset.id)));
+}
+
+function renderFinanceCategories(categories) {
+  const tbody = document.getElementById("finance-categories-table-body");
+  if (!tbody) return;
+  tbody.innerHTML = categories.length ? categories.map((category) => `
+    <tr><td><strong>${escapeHtml(category.categoryName)}</strong></td><td>${escapeHtml(category.type)}</td><td><span class="badge ${category.status === 'Active' ? 'badge-success' : 'badge-danger'}">${escapeHtml(category.status || 'Active')}</span></td><td>${escapeHtml(category.notes || '')}</td><td class="text-right"><button class="btn-secondary btn-sm finance-category-edit" data-id="${category.id}">Edit</button> <button class="btn-danger btn-sm finance-category-delete" data-id="${category.id}">Delete</button></td></tr>
+  `).join("") : `<tr><td colspan="5" class="text-center">No finance categories yet.</td></tr>`;
+  tbody.querySelectorAll(".finance-category-edit").forEach((btn) => btn.addEventListener("click", () => editFinanceCategory(btn.dataset.id)));
+  tbody.querySelectorAll(".finance-category-delete").forEach((btn) => btn.addEventListener("click", () => deleteFinanceRecord(KEYS.financeCategories, btn.dataset.id)));
+}
+
+function renderDailyAccounts(entries) {
+  const tbody = document.getElementById("daily-accounts-table-body");
+  if (!tbody) return;
+  tbody.innerHTML = entries.length ? entries.map((entry) => `
+    <tr><td>${formatDate(entry.date)}</td><td><span class="badge ${entry.type === 'Income' ? 'badge-success' : 'badge-danger'}">${escapeHtml(entry.type)}</span></td><td>${escapeHtml(entry.accountName || getAccountName(entry.accountId))}</td><td>${escapeHtml(entry.categoryName || getCategoryName(entry.categoryId))}</td><td>${escapeHtml(entry.desc)}</td><td><strong>${formatCurrency(entry.amount)}</strong></td><td><span class="badge ${entry.status === 'Voided' ? 'badge-danger' : 'badge-success'}">${escapeHtml(entry.status || 'Posted')}</span></td><td class="text-right"><button class="btn-secondary btn-sm daily-edit" data-id="${entry.id}">Edit</button> <button class="btn-danger btn-sm daily-void" data-id="${entry.id}">Void</button> <button class="btn-danger btn-sm daily-delete" data-id="${entry.id}">Delete</button></td></tr>
+  `).join("") : `<tr><td colspan="8" class="text-center">No daily account entries yet.</td></tr>`;
+  tbody.querySelectorAll(".daily-edit").forEach((btn) => btn.addEventListener("click", () => editDailyAccount(btn.dataset.id)));
+  tbody.querySelectorAll(".daily-void").forEach((btn) => btn.addEventListener("click", () => voidFinanceRecord(KEYS.dailyAccounts, btn.dataset.id)));
+  tbody.querySelectorAll(".daily-delete").forEach((btn) => btn.addEventListener("click", () => deleteFinanceRecord(KEYS.dailyAccounts, btn.dataset.id)));
+}
+
+function renderFinanceTransfers(transfers) {
+  const tbody = document.getElementById("finance-transfers-table-body");
+  if (!tbody) return;
+  tbody.innerHTML = transfers.length ? transfers.map((transfer) => `
+    <tr><td>${formatDate(transfer.date)}</td><td>${escapeHtml(transfer.fromAccountName || getAccountName(transfer.fromAccountId))}</td><td>${escapeHtml(transfer.toAccountName || getAccountName(transfer.toAccountId))}</td><td><strong>${formatCurrency(transfer.amount)}</strong></td><td>${escapeHtml(transfer.reference || '')}</td><td><span class="badge ${transfer.status === 'Voided' ? 'badge-danger' : 'badge-success'}">${escapeHtml(transfer.status || 'Posted')}</span></td><td class="text-right"><button class="btn-secondary btn-sm transfer-edit" data-id="${transfer.id}">Edit</button> <button class="btn-danger btn-sm transfer-void" data-id="${transfer.id}">Void</button> <button class="btn-danger btn-sm transfer-delete" data-id="${transfer.id}">Delete</button></td></tr>
+  `).join("") : `<tr><td colspan="7" class="text-center">No account transfers yet.</td></tr>`;
+  tbody.querySelectorAll(".transfer-edit").forEach((btn) => btn.addEventListener("click", () => editFinanceTransfer(btn.dataset.id)));
+  tbody.querySelectorAll(".transfer-void").forEach((btn) => btn.addEventListener("click", () => voidFinanceRecord(KEYS.financeTransfers, btn.dataset.id)));
+  tbody.querySelectorAll(".transfer-delete").forEach((btn) => btn.addEventListener("click", () => deleteFinanceRecord(KEYS.financeTransfers, btn.dataset.id)));
+}
+
+async function saveFinanceAccount(event) {
+  event.preventDefault();
+  const data = { accountName: getValue("fin-account-name"), type: getValue("fin-account-type"), openingBalance: getNumber("fin-account-opening"), currentBalance: getNumber("fin-account-current") || getNumber("fin-account-opening"), status: getValue("fin-account-status") };
+  if (!data.accountName) return showToast("Account name is required.", "error");
+  await saveFinanceDocument(KEYS.financeAccounts, financeEditIds.account, data);
+  financeEditIds.account = null;
+  document.getElementById("finance-account-form")?.reset();
+  await refreshActiveData();
+}
+
+async function saveFinanceCategory(event) {
+  event.preventDefault();
+  const data = { categoryName: getValue("fin-category-name"), type: getValue("fin-category-type"), status: getValue("fin-category-status"), notes: getValue("fin-category-notes") };
+  if (!data.categoryName) return showToast("Category name is required.", "error");
+  await saveFinanceDocument(KEYS.financeCategories, financeEditIds.category, data);
+  financeEditIds.category = null;
+  document.getElementById("finance-category-form")?.reset();
+  await refreshActiveData();
+}
+
+async function saveDailyAccount(event) {
+  event.preventDefault();
+  const account = getStoredRecords(KEYS.financeAccounts).find((row) => row.id === getValue("daily-account"));
+  const category = getStoredRecords(KEYS.financeCategories).find((row) => row.id === getValue("daily-category"));
+  const data = { date: getValue("daily-date"), type: getValue("daily-type"), accountId: account?.id || "", accountName: account?.accountName || "", categoryId: category?.id || "", categoryName: category?.categoryName || "", desc: getValue("daily-desc"), amount: getNumber("daily-amount"), reference: getValue("daily-ref"), status: "Posted" };
+  if (!data.date || !data.accountId || !data.categoryId || !data.desc || data.amount <= 0) return showToast("Complete daily account entry fields.", "error");
+  const id = await saveFinanceDocument(KEYS.dailyAccounts, financeEditIds.daily, data);
+  await reconcileFinanceLedger(data, { id, previous: financeEditIds.daily ? getStoredRecords(KEYS.dailyAccounts).find((row) => row.id === financeEditIds.daily) : null, sourceType: "daily" });
+  financeEditIds.daily = null;
+  document.getElementById("daily-account-form")?.reset();
+  await refreshActiveData();
+}
+
+async function saveFinanceTransfer(event) {
+  event.preventDefault();
+  const from = getStoredRecords(KEYS.financeAccounts).find((row) => row.id === getValue("fin-transfer-from"));
+  const to = getStoredRecords(KEYS.financeAccounts).find((row) => row.id === getValue("fin-transfer-to"));
+  const data = { date: getValue("fin-transfer-date"), fromAccountId: from?.id || "", fromAccountName: from?.accountName || "", toAccountId: to?.id || "", toAccountName: to?.accountName || "", amount: getNumber("fin-transfer-amount"), reference: getValue("fin-transfer-ref"), notes: getValue("fin-transfer-notes"), status: "Posted" };
+  if (!data.date || !data.fromAccountId || !data.toAccountId || data.fromAccountId === data.toAccountId || data.amount <= 0) return showToast("Choose two different accounts and enter a valid amount.", "error");
+  const id = await saveFinanceDocument(KEYS.financeTransfers, financeEditIds.transfer, data);
+  await reconcileFinanceLedger(data, { id, previous: financeEditIds.transfer ? getStoredRecords(KEYS.financeTransfers).find((row) => row.id === financeEditIds.transfer) : null, sourceType: "transfer" });
+  financeEditIds.transfer = null;
+  document.getElementById("finance-transfer-form")?.reset();
+  await refreshActiveData();
+}
+
+async function saveFinanceDocument(key, id, data) {
+  if (id) {
+    await updateCollectionRecord(COLLECTION_BY_KEY[key], id, data);
+    showToast("Finance record updated.", "success");
+    return id;
+  }
+  const savedId = await createCollectionRecord(COLLECTION_BY_KEY[key], data);
+  showToast("Finance record created.", "success");
+  return savedId;
+}
+
+function editFinanceAccount(id) {
+  const record = getStoredRecords(KEYS.financeAccounts).find((row) => row.id === id);
+  if (!record) return;
+  financeEditIds.account = id;
+  setValue("fin-account-name", record.accountName); setValue("fin-account-type", record.type); setValue("fin-account-opening", record.openingBalance); setValue("fin-account-current", getFinanceAccountBalance(record)); setValue("fin-account-status", record.status || "Active");
+}
+
+function editFinanceCategory(id) {
+  const record = getStoredRecords(KEYS.financeCategories).find((row) => row.id === id);
+  if (!record) return;
+  financeEditIds.category = id;
+  setValue("fin-category-name", record.categoryName); setValue("fin-category-type", record.type); setValue("fin-category-status", record.status || "Active"); setValue("fin-category-notes", record.notes);
+}
+
+function editDailyAccount(id) {
+  const record = getStoredRecords(KEYS.dailyAccounts).find((row) => row.id === id);
+  if (!record || record.status === "Voided") return;
+  financeEditIds.daily = id;
+  setValue("daily-date", record.date); setValue("daily-type", record.type); refreshFinanceOptions(); setValue("daily-account", record.accountId); setValue("daily-category", record.categoryId); setValue("daily-desc", record.desc); setValue("daily-amount", record.amount); setValue("daily-ref", record.reference);
+}
+
+function editFinanceTransfer(id) {
+  const record = getStoredRecords(KEYS.financeTransfers).find((row) => row.id === id);
+  if (!record || record.status === "Voided") return;
+  financeEditIds.transfer = id;
+  setValue("fin-transfer-date", record.date); setValue("fin-transfer-from", record.fromAccountId); setValue("fin-transfer-to", record.toAccountId); setValue("fin-transfer-amount", record.amount); setValue("fin-transfer-ref", record.reference); setValue("fin-transfer-notes", record.notes);
+}
+
+async function reconcileFinanceLedger(data, meta) {
+  const operations = [];
+  addFinanceLedgerDeleteOperations(operations, meta.id || meta.previous?.id);
+  addFinanceBalanceDeltaOperations(operations, data, meta);
+  if (data?.status !== "Voided") addFinanceLedgerCreateOperations(operations, data, meta);
+  if (operations.length) await commitBatchOperations(operations);
+}
+
+
+function addFinanceBalanceDeltaOperations(operations, data, meta) {
+  const applyDaily = (entry, multiplier = 1) => {
+    if (!entry?.accountId || entry.status === "Voided") return;
+    const signed = (entry.type === "Income" ? getNumberFromValue(entry.amount) : -getNumberFromValue(entry.amount)) * multiplier;
+    addFinanceAccountBalanceUpdate(operations, entry.accountId, signed);
+  };
+  const applyTransfer = (entry, multiplier = 1) => {
+    if (!entry || entry.status === "Voided") return;
+    const amount = getNumberFromValue(entry.amount) * multiplier;
+    addFinanceAccountBalanceUpdate(operations, entry.fromAccountId, -amount);
+    addFinanceAccountBalanceUpdate(operations, entry.toAccountId, amount);
+  };
+  if (meta.sourceType === "transfer") {
+    applyTransfer(meta.previous, -1);
+    if (data?.status !== "Voided") applyTransfer(data, 1);
+    return;
+  }
+  applyDaily(meta.previous, -1);
+  if (data?.status !== "Voided") applyDaily(data, 1);
+}
+
+function addFinanceAccountBalanceUpdate(operations, accountId, delta) {
+  if (!accountId || !delta) return;
+  const account = getStoredRecords(KEYS.financeAccounts).find((row) => row.id === accountId);
+  if (!account) return;
+  const existing = operations.find((operation) => operation.type === "update" && operation.collectionName === COLLECTIONS.financeAccounts && operation.id === accountId);
+  const base = existing ? getNumberFromValue(existing.payload.currentBalance) : getFinanceAccountBalance(account);
+  const payload = existing?.payload || {};
+  payload.currentBalance = base + delta;
+  payload.lastBalanceUpdate = new Date().toISOString().slice(0, 10);
+  if (!existing) operations.push({ type: "update", collectionName: COLLECTIONS.financeAccounts, id: accountId, payload });
+}
+
+function addFinanceLedgerDeleteOperations(operations, sourceId) {
+  if (!sourceId) return;
+  getStoredRecords(KEYS.ledgerEntries).filter((entry) => entry.sourceId === sourceId).forEach((entry) => operations.push({ type: "delete", collectionName: COLLECTIONS.ledgerEntries, id: entry.id }));
+}
+
+function addFinanceLedgerCreateOperations(operations, data, meta) {
+  if (meta.sourceType === "transfer") {
+    operations.push({ type: "set", collectionName: COLLECTIONS.ledgerEntries, payload: { sourceId: meta.id, date: data.date, module: "Company Finance", account: data.fromAccountName, accountId: data.fromAccountId, type: "transfer-out", debit: data.amount, credit: 0, referenceCollection: COLLECTIONS.financeTransfers, referenceId: meta.id, description: `Transfer to ${data.toAccountName}`, status: "posted" } });
+    operations.push({ type: "set", collectionName: COLLECTIONS.ledgerEntries, payload: { sourceId: meta.id, date: data.date, module: "Company Finance", account: data.toAccountName, accountId: data.toAccountId, type: "transfer-in", debit: 0, credit: data.amount, referenceCollection: COLLECTIONS.financeTransfers, referenceId: meta.id, description: `Transfer from ${data.fromAccountName}`, status: "posted" } });
+    return;
+  }
+  const isIncome = data.type === "Income";
+  operations.push({ type: "set", collectionName: COLLECTIONS.ledgerEntries, payload: { sourceId: meta.id, date: data.date, module: "Company Finance", account: data.accountName, accountId: data.accountId, categoryId: data.categoryId, categoryName: data.categoryName, type: isIncome ? "income" : "expense", debit: isIncome ? 0 : data.amount, credit: isIncome ? data.amount : 0, referenceCollection: COLLECTIONS.dailyAccounts, referenceId: meta.id, description: data.desc, status: "posted" } });
+}
+
+async function voidFinanceRecord(key, id) {
+  const record = getStoredRecords(key).find((row) => row.id === id);
+  if (!record || record.status === "Voided") return;
+  if (!confirm("Void this finance record and reverse linked ledger entries?")) return;
+  await reconcileFinanceLedger({ ...record, status: "Voided" }, { id, previous: record, sourceType: key === KEYS.financeTransfers ? "transfer" : "daily" });
+  await updateCollectionRecord(COLLECTION_BY_KEY[key], id, { status: "Voided", voidedAt: new Date().toISOString() });
+  showToast("Finance record voided.", "success");
+  await refreshActiveData();
+}
+
+async function deleteFinanceRecord(key, id) {
+  if (!confirm("Delete this finance record?")) return;
+  await reconcileFinanceLedger(null, { id, previous: getStoredRecords(key).find((row) => row.id === id), sourceType: key === KEYS.financeTransfers ? "transfer" : "daily" });
+  await deleteCollectionRecord(COLLECTION_BY_KEY[key], id);
+  showToast("Finance record deleted.", "success");
+  await refreshActiveData();
+}
+
+
+
 function initProductionMaterialUi() {
   document.getElementById("add-production-material-btn")?.addEventListener("click", () => addProductionMaterialRow());
   document.getElementById("production-materials-container")?.addEventListener("input", handleProductionMaterialChange);
@@ -2565,14 +2899,16 @@ function renderAccountingSummary() {
   const income = getStoredRecords(KEYS.income);
   const cash = getStoredRecords(KEYS.cashBook);
   const bank = getStoredRecords(KEYS.bankBook);
+  const dailyAccounts = getStoredRecords(KEYS.dailyAccounts).filter((entry) => entry.status !== "Voided");
+  const financeAccounts = getStoredRecords(KEYS.financeAccounts);
 
-  const totIncome = income.reduce((sum, item) => sum + parseFloat(item.amount || 0), 0);
-  const totExpense = expenses.reduce((sum, item) => sum + parseFloat(item.amount || 0), 0);
+  const totIncome = income.reduce((sum, item) => sum + parseFloat(item.amount || 0), 0) + dailyAccounts.filter((entry) => entry.type === "Income").reduce((sum, item) => sum + parseFloat(item.amount || 0), 0);
+  const totExpense = expenses.reduce((sum, item) => sum + parseFloat(item.amount || 0), 0) + dailyAccounts.filter((entry) => entry.type === "Expense").reduce((sum, item) => sum + parseFloat(item.amount || 0), 0);
   const totSales = sales.reduce((sum, item) => sum + parseFloat(item.finalAmount || 0), 0);
   const totPurchase = purchases.reduce((sum, item) => sum + parseFloat(item.totalAmount || 0), 0);
   
-  const cashBal = cash.length > 0 ? parseFloat(cash[cash.length - 1].balance || 0) : 0;
-  const bankBal = bank.length > 0 ? parseFloat(bank[bank.length - 1].balance || 0) : 0;
+  const cashBal = financeAccounts.length ? financeAccounts.filter((account) => account.type === "Cash").reduce((sum, account) => sum + getFinanceAccountBalance(account), 0) : (cash.length > 0 ? parseFloat(cash[cash.length - 1].balance || 0) : 0);
+  const bankBal = financeAccounts.length ? financeAccounts.filter((account) => ["Bank", "UPI", "Card"].includes(account.type)).reduce((sum, account) => sum + getFinanceAccountBalance(account), 0) : (bank.length > 0 ? parseFloat(bank[bank.length - 1].balance || 0) : 0);
 
   // Simple Profit Estimate: Income - Expenses (or Sales - Cost of Goods Sold / Purchases - Expenses)
   // For the simple mockup version, we'll use: Total Income - Total Expense
@@ -4195,6 +4531,7 @@ function activeSectionKey() {
     income: KEYS.income,
     cashbook: KEYS.cashBook,
     bankbook: KEYS.bankBook,
+    "company-finance": KEYS.dailyAccounts,
     production: KEYS.production,
     "raw-materials": KEYS.rawMaterials,
     "investment-sharing": KEYS.sharing
