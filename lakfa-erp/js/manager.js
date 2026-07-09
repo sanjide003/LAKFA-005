@@ -16,6 +16,7 @@ const KEYS = {
   rawMaterialLedger: "lakfa_raw_material_ledger",
   stockLedger: "lakfa_stock_ledger",
   ledgerEntries: "lakfa_ledger_entries",
+  supplierLedger: "lakfa_supplier_ledger",
   sales: "lakfa_sales",
   orders: "lakfa_orders",
   delivery: "lakfa_delivery",
@@ -63,6 +64,7 @@ const COLLECTION_BY_KEY = {
   [KEYS.rawMaterialLedger]: COLLECTIONS.rawMaterialLedger,
   [KEYS.stockLedger]: COLLECTIONS.stockLedger,
   [KEYS.ledgerEntries]: COLLECTIONS.ledgerEntries,
+  [KEYS.supplierLedger]: COLLECTIONS.supplierLedger,
   [KEYS.sales]: COLLECTIONS.sales,
   [KEYS.orders]: COLLECTIONS.orders,
   [KEYS.delivery]: COLLECTIONS.delivery,
@@ -99,6 +101,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   initSidebarRouting();
   initOrderManagementUi();
   initProductionMaterialUi();
+  initSupplierPurchaseUi();
 
   // 6. Initialize report export actions
   initReportExportActions();
@@ -502,9 +505,11 @@ function renderModule(sectionId) {
       break;
     case "suppliers":
       renderTable(KEYS.suppliers, "suppliers-table-body");
+      refreshSupplierPurchaseOptions();
       break;
     case "purchase":
       renderTable(KEYS.purchases, "purchase-table-body");
+      refreshSupplierPurchaseOptions();
       break;
     case "inventory":
       renderTable(KEYS.inventory, "inventory-table-body");
@@ -515,6 +520,7 @@ function renderModule(sectionId) {
       break;
     case "raw-materials":
       renderTable(KEYS.rawMaterials, "raw-materials-table-body");
+      refreshSupplierPurchaseOptions();
       break;
     case "sales":
       renderTable(KEYS.sales, "sales-table-body");
@@ -651,24 +657,26 @@ function renderTable(key, tableBodyId) {
         <td><span class="badge badge-info">${row.type}</span></td>
       `;
     } else if (key === KEYS.suppliers) {
+      const payable = getSupplierComputedPayable(row);
       cellsHTML = `
         <td><strong>${row.name}</strong><br><small style="color: var(--text-muted);">${row.id}</small></td>
         <td>${row.phone}</td>
         <td>${row.place}</td>
         <td>${row.gst || 'No GST'}</td>
         <td>${row.itemSupplied}</td>
+        <td><strong class="${payable > 0 ? 'text-danger' : ''}">${formatCurrency(payable)}</strong></td>
         <td>${row.terms}</td>
       `;
     } else if (key === KEYS.purchases) {
       cellsHTML = `
         <td>${formatDate(row.date)}</td>
         <td><strong>${row.supplier}</strong><br><small>${row.invoice}</small></td>
-        <td>${row.itemName}</td>
+        <td>${row.item || row.itemName}</td>
         <td>${row.qty} ${row.unit}</td>
         <td>${formatCurrency(row.rate)}</td>
         <td><strong>${formatCurrency(row.totalAmount)}</strong></td>
-        <td><span class="badge badge-info">${row.paymentMode}</span></td>
-        <td><span class="badge ${row.paymentStatus === 'Paid' ? 'badge-success' : row.paymentStatus === 'Pending' ? 'badge-danger' : 'badge-warning'}">${row.paymentStatus}</span></td>
+        <td><span>Paid: ${formatCurrency(row.paidAmount)}</span><br><strong class="${getNumberFromValue(row.balancePayable) > 0 ? 'text-danger' : ''}">Bal: ${formatCurrency(row.balancePayable)}</strong></td>
+        <td><span class="badge ${row.status === 'Voided' ? 'badge-danger' : row.paymentStatus === 'Paid' ? 'badge-success' : row.paymentStatus === 'Pending' ? 'badge-danger' : 'badge-warning'}">${row.status || row.paymentStatus}</span></td>
       `;
     } else if (key === KEYS.inventory) {
       cellsHTML = `
@@ -791,17 +799,29 @@ function renderTable(key, tableBodyId) {
         ? `<button class="btn-secondary btn-sm copy-notification-btn" style="padding: 0.25rem 0.5rem; margin-right: 4px;">Copy Msg</button>
            <button class="btn-secondary btn-sm whatsapp-btn" style="padding: 0.25rem 0.5rem; margin-right: 4px;">WhatsApp</button>`
         : "";
+      const supplierPayButton = key === KEYS.suppliers
+        ? `<button class="btn-primary btn-sm supplier-pay-btn" style="padding: 0.25rem 0.5rem; margin-right: 4px;">Pay</button>
+           <button class="btn-secondary btn-sm supplier-statement-btn" style="padding: 0.25rem 0.5rem; margin-right: 4px;">Statement</button>`
+        : "";
+      const purchaseVoidButton = key === KEYS.purchases && row.status !== "Voided"
+        ? `<button class="btn-danger btn-sm purchase-void-btn" style="padding: 0.25rem 0.5rem; margin-right: 4px;">Void</button>`
+        : "";
       tr.innerHTML = `
         ${cellsHTML}
         <td class="text-right" style="white-space: nowrap;">
           ${documentButtons}
           ${notificationButtons}
+          ${supplierPayButton}
+          ${purchaseVoidButton}
           <button class="btn-secondary btn-sm edit-btn" style="padding: 0.25rem 0.5rem; margin-right: 4px;">Edit</button>
           <button class="btn-danger btn-sm delete-btn" style="padding: 0.25rem 0.5rem;">Delete</button>
         </td>
       `;
       tr.querySelector(".edit-btn").addEventListener("click", () => loadRecordForEdit(key, row.id));
       tr.querySelector(".delete-btn").addEventListener("click", () => deleteRecord(key, row.id));
+      tr.querySelector(".supplier-pay-btn")?.addEventListener("click", () => openSupplierPaymentModal(row.id));
+      tr.querySelector(".supplier-statement-btn")?.addEventListener("click", () => openSupplierStatementModal(row.id));
+      tr.querySelector(".purchase-void-btn")?.addEventListener("click", () => voidPurchase(row.id));
       tr.querySelector(".print-doc-btn")?.addEventListener("click", () => printDocument(key, row.id));
       tr.querySelector(".download-doc-btn")?.addEventListener("click", () => downloadDocumentHtml(key, row.id));
       tr.querySelector(".copy-notification-btn")?.addEventListener("click", () => copyNotificationMessage(key, row.id));
@@ -1439,6 +1459,169 @@ async function ensureCustomerFromOrder(order) {
   } else {
     await createCollectionRecord(COLLECTIONS.customers, payload);
   }
+}
+
+
+function initSupplierPurchaseUi() {
+  ["pur-qty", "pur-rate", "pur-paid"].forEach((id) => document.getElementById(id)?.addEventListener("input", updatePurchaseTotals));
+  document.getElementById("pur-raw-material")?.addEventListener("change", handlePurchaseRawMaterialChange);
+  ["close-supplier-payment-modal-btn", "cancel-supplier-payment-modal-btn"].forEach((id) => document.getElementById(id)?.addEventListener("click", closeSupplierPaymentModal));
+  document.getElementById("supplier-payment-modal")?.addEventListener("click", (event) => {
+    if (event.target.id === "supplier-payment-modal") closeSupplierPaymentModal();
+  });
+  ["close-supplier-statement-modal-btn", "cancel-supplier-statement-modal-btn"].forEach((id) => document.getElementById(id)?.addEventListener("click", closeSupplierStatementModal));
+  document.getElementById("supplier-statement-modal")?.addEventListener("click", (event) => {
+    if (event.target.id === "supplier-statement-modal") closeSupplierStatementModal();
+  });
+  document.getElementById("supplier-payment-form")?.addEventListener("submit", submitSupplierPayment);
+  refreshSupplierPurchaseOptions();
+}
+
+function refreshSupplierPurchaseOptions() {
+  const supplierOptions = document.getElementById("supplier-options");
+  if (supplierOptions) {
+    supplierOptions.innerHTML = getStoredRecords(KEYS.suppliers).map((supplier) => `<option value="${escapeHtml(supplier.name)}"></option>`).join("");
+  }
+  const rawSelect = document.getElementById("pur-raw-material");
+  if (rawSelect) {
+    const currentValue = rawSelect.value;
+    rawSelect.innerHTML = `<option value="">Select raw material</option>` + getStoredRecords(KEYS.rawMaterials).map((material) => `
+      <option value="${escapeHtml(material.id)}" data-name="${escapeHtml(material.name)}" data-unit="${escapeHtml(material.unit || '')}" data-rate="${getNumberFromValue(material.rate)}">${escapeHtml(material.name)} (${escapeHtml(material.unit || '')})</option>
+    `).join("");
+    rawSelect.value = currentValue;
+  }
+}
+
+function handlePurchaseRawMaterialChange() {
+  const selected = document.getElementById("pur-raw-material")?.selectedOptions?.[0];
+  setValue("pur-item", selected?.dataset.name || "");
+  if (selected?.dataset.unit) setValue("pur-unit", selected.dataset.unit);
+  if (selected?.dataset.rate && !getValue("pur-rate")) setValue("pur-rate", selected.dataset.rate);
+  updatePurchaseTotals();
+}
+
+function updatePurchaseTotals() {
+  const qty = getNumber("pur-qty");
+  const rate = getNumber("pur-rate");
+  const total = qty * rate;
+  const paid = Math.min(getNumber("pur-paid"), total);
+  setValue("pur-total", total.toFixed(2));
+  setValue("pur-balance", Math.max(total - paid, 0).toFixed(2));
+  const status = document.getElementById("pur-status");
+  if (status && total > 0) {
+    status.value = paid <= 0 ? "Pending" : paid >= total ? "Paid" : "Partial";
+  }
+}
+
+function getSupplierComputedPayable(supplier) {
+  const supplierId = supplier?.id;
+  const supplierName = (supplier?.name || "").toLowerCase();
+  const ledgerTotal = getStoredRecords(KEYS.supplierLedger)
+    .filter((row) => row.supplierId === supplierId || (row.supplierName || "").toLowerCase() === supplierName)
+    .reduce((sum, row) => sum + getNumberFromValue(row.balanceDelta), 0);
+  return Math.max(ledgerTotal || getNumberFromValue(supplier?.currentPayable), 0);
+}
+
+function openSupplierPaymentModal(supplierId) {
+  const supplier = getStoredRecords(KEYS.suppliers).find((row) => row.id === supplierId);
+  if (!supplier) return;
+  setValue("supplier-pay-id", supplier.id);
+  setValue("supplier-pay-name", supplier.name);
+  setValue("supplier-pay-current", getSupplierComputedPayable(supplier).toFixed(2));
+  setValue("supplier-pay-amount", "");
+  setValue("supplier-pay-date", new Date().toISOString().slice(0, 10));
+  setValue("supplier-pay-mode", "Bank");
+  setValue("supplier-pay-ref", "");
+  setValue("supplier-pay-notes", "");
+  document.getElementById("supplier-payment-modal").hidden = false;
+  document.body.style.overflow = "hidden";
+}
+
+function closeSupplierPaymentModal() {
+  const modal = document.getElementById("supplier-payment-modal");
+  if (modal) modal.hidden = true;
+  document.body.style.overflow = "";
+}
+
+function openSupplierStatementModal(supplierId) {
+  const supplier = getStoredRecords(KEYS.suppliers).find((row) => row.id === supplierId);
+  if (!supplier) return;
+  const statementRows = getStoredRecords(KEYS.supplierLedger)
+    .filter((row) => row.supplierId === supplier.id || (row.supplierName || "").toLowerCase() === (supplier.name || "").toLowerCase())
+    .sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")));
+  const payable = getSupplierComputedPayable(supplier);
+  const debits = statementRows.reduce((sum, row) => sum + Math.max(getNumberFromValue(row.balanceDelta), 0), 0);
+  const credits = statementRows.reduce((sum, row) => sum + Math.abs(Math.min(getNumberFromValue(row.balanceDelta), 0)), 0);
+  document.getElementById("supplier-statement-title").textContent = `${supplier.name} Statement`;
+  const summary = document.getElementById("supplier-statement-summary");
+  if (summary) {
+    summary.innerHTML = `
+      <div class="summary-card"><span>Total Purchases/Opening</span><strong>${formatCurrency(debits)}</strong></div>
+      <div class="summary-card"><span>Total Payments</span><strong>${formatCurrency(credits)}</strong></div>
+      <div class="summary-card"><span>Current Payable</span><strong>${formatCurrency(payable)}</strong></div>
+    `;
+  }
+  let runningBalance = 0;
+  const body = document.getElementById("supplier-statement-body");
+  if (body) {
+    body.innerHTML = statementRows.length ? statementRows.map((row) => {
+      const delta = getNumberFromValue(row.balanceDelta);
+      runningBalance += delta;
+      return `
+        <tr>
+          <td>${row.date ? formatDate(row.date) : '-'}</td>
+          <td><span class="badge ${delta >= 0 ? 'badge-warning' : 'badge-success'}">${escapeHtml(row.type || '')}</span></td>
+          <td>${escapeHtml(row.reference || '-')}</td>
+          <td>${delta > 0 ? formatCurrency(delta) : '-'}</td>
+          <td>${delta < 0 ? formatCurrency(Math.abs(delta)) : '-'}</td>
+          <td><strong>${formatCurrency(runningBalance)}</strong></td>
+          <td>${escapeHtml(row.notes || '')}</td>
+        </tr>
+      `;
+    }).join("") : `<tr><td colspan="7" class="empty-state">No supplier ledger entries yet.</td></tr>`;
+  }
+  document.getElementById("supplier-statement-modal").hidden = false;
+  document.body.style.overflow = "hidden";
+}
+
+function closeSupplierStatementModal() {
+  const modal = document.getElementById("supplier-statement-modal");
+  if (modal) modal.hidden = true;
+  document.body.style.overflow = "";
+}
+
+async function submitSupplierPayment(event) {
+  event.preventDefault();
+  const supplier = getStoredRecords(KEYS.suppliers).find((row) => row.id === getValue("supplier-pay-id"));
+  const amount = getNumber("supplier-pay-amount");
+  if (!supplier || amount <= 0) {
+    showToast("Select a supplier and enter a valid payment amount.", "error");
+    return;
+  }
+  const currentPayable = getSupplierComputedPayable(supplier);
+  const paidAmount = Math.min(amount, currentPayable);
+  const operations = [];
+  operations.push({
+    type: "update",
+    collectionName: COLLECTIONS.suppliers,
+    id: supplier.id,
+    payload: { currentPayable: Math.max(currentPayable - paidAmount, 0), lastPaymentDate: getValue("supplier-pay-date") }
+  });
+  addSupplierLedgerOperation(operations, {
+    sourceId: `supplier-payment-${Date.now()}`,
+    supplier,
+    date: getValue("supplier-pay-date"),
+    type: "payment",
+    amount: paidAmount,
+    balanceDelta: -paidAmount,
+    reference: getValue("supplier-pay-ref") || "Supplier payment",
+    notes: getValue("supplier-pay-notes"),
+    paymentMode: getValue("supplier-pay-mode")
+  });
+  await commitBatchOperations(operations);
+  showToast("Supplier payment recorded.", "success");
+  closeSupplierPaymentModal();
+  await refreshActiveData();
 }
 
 
@@ -2397,7 +2580,7 @@ function renderAccountingSummary() {
   
   // Pending sales and purchase payments
   const pendingSales = sales.filter(s => s.paymentStatus !== "Paid").reduce((sum, s) => sum + parseFloat(s.finalAmount || 0), 0);
-  const pendingPurchases = purchases.filter(p => p.paymentStatus !== "Paid").reduce((sum, p) => sum + parseFloat(p.totalAmount || 0), 0);
+  const pendingPurchases = purchases.filter(p => p.paymentStatus !== "Paid" && p.status !== "Voided").reduce((sum, p) => sum + parseFloat(p.balancePayable ?? p.totalAmount ?? 0), 0);
 
   document.getElementById("acc-tot-income").textContent = formatCurrency(totIncome);
   document.getElementById("acc-tot-expense").textContent = formatCurrency(totExpense);
@@ -2487,25 +2670,36 @@ function initWritableFormListeners() {
     key: KEYS.suppliers,
     submitButtonId: "supplier-submit-btn",
     validate: (data) => data.name && data.phone && data.place,
-    getData: () => ({
-      name: getValue("supp-name"),
-      phone: getValue("supp-phone"),
-      place: getValue("supp-place"),
-      address: getValue("supp-address"),
-      gst: getValue("supp-gst"),
-      itemSupplied: getValue("supp-item"),
-      terms: getValue("supp-terms"),
-      notes: getValue("supp-notes")
-    }),
+    getData: () => {
+      const openingPayable = getNumber("supp-opening-payable");
+      return {
+        name: getValue("supp-name"),
+        phone: getValue("supp-phone"),
+        place: getValue("supp-place"),
+        address: getValue("supp-address"),
+        gst: getValue("supp-gst"),
+        openingPayable,
+        currentPayable: getNumber("supp-current-payable") || openingPayable,
+        itemSupplied: getValue("supp-item"),
+        terms: getValue("supp-terms"),
+        notes: getValue("supp-notes")
+      };
+    },
     populate: (record) => {
       setValue("supp-name", record.name);
       setValue("supp-phone", record.phone);
       setValue("supp-place", record.place);
       setValue("supp-address", record.address);
       setValue("supp-gst", record.gst);
+      setValue("supp-opening-payable", record.openingPayable);
+      setValue("supp-current-payable", getSupplierComputedPayable(record));
       setValue("supp-item", record.itemSupplied);
       setValue("supp-terms", record.terms);
       setValue("supp-notes", record.notes);
+    },
+    afterSave: async (data, meta) => {
+      await reconcileSupplierOpeningLedger(data, meta);
+      refreshSupplierPurchaseOptions();
     }
   });
 
@@ -2542,27 +2736,34 @@ function initWritableFormListeners() {
     formId: "purchase-form",
     key: KEYS.purchases,
     submitButtonId: "purchase-submit-btn",
-    validate: (data) => data.date && data.invoice && data.supplier && data.item && data.qty > 0 && data.rate >= 0,
+    validate: (data) => data.date && data.invoice && data.supplier && data.rawMaterialId && data.qty > 0 && data.rate >= 0,
     getData: () => {
       const qty = getNumber("pur-qty");
       const rate = getNumber("pur-rate");
+      const totalAmount = qty * rate;
+      const paidAmount = Math.min(getNumber("pur-paid"), totalAmount);
       return {
         date: getValue("pur-date"),
         invoice: getValue("pur-invoice"),
         supplier: getValue("pur-supplier"),
+        rawMaterialId: getValue("pur-raw-material"),
         item: getValue("pur-item"),
+        itemName: getValue("pur-item"),
         qty,
         unit: getValue("pur-unit"),
         rate,
-        totalAmount: qty * rate,
+        totalAmount,
+        paidAmount,
+        balancePayable: Math.max(totalAmount - paidAmount, 0),
         paymentMode: getValue("pur-mode"),
-        paymentStatus: getValue("pur-status"),
+        paymentStatus: paidAmount <= 0 ? "Pending" : paidAmount >= totalAmount ? "Paid" : "Partial",
+        status: "Posted",
         notes: getValue("pur-notes")
       };
     },
     populate: populatePurchase,
     afterSave: async (data, meta) => {
-      await reconcileStockAndLedger(data, { ...meta, moduleName: "Purchase", stockName: data.item, stockDelta: data.qty, amount: data.totalAmount, direction: "out", reference: data.invoice });
+      await reconcilePurchasePayableAndRawStock(data, meta);
     }
   });
 
@@ -3041,6 +3242,151 @@ async function reconcileOrderInventoryAndLedger(data, meta) {
   if (data) addLinkedLedgerCreateOperation(operations, data, meta);
   if (operations.length) await commitBatchOperations(operations);
 }
+
+async function reconcileSupplierOpeningLedger(data, meta) {
+  const operations = [];
+  addLinkedSupplierLedgerDeleteOperations(operations, meta.id || meta.previous?.id);
+  if (!meta.isDelete && data && getNumberFromValue(data.openingPayable) > 0) {
+    addSupplierLedgerOperation(operations, {
+      sourceId: meta.id,
+      supplier: { id: meta.id, name: data.name },
+      date: new Date().toISOString().slice(0, 10),
+      type: "opening",
+      amount: data.openingPayable,
+      balanceDelta: data.openingPayable,
+      reference: "Opening Payable",
+      notes: data.notes || "Supplier opening payable"
+    });
+  }
+  if (operations.length) await commitBatchOperations(operations);
+}
+
+async function reconcilePurchasePayableAndRawStock(data, meta) {
+  const operations = [];
+  const sourceId = meta.id || meta.previous?.id;
+  addLinkedMovementDeleteOperations(operations, sourceId);
+  addLinkedSupplierLedgerDeleteOperations(operations, sourceId);
+  if (meta.previous?.status !== "Voided") addPurchaseReversalOperations(operations, meta.previous);
+  if (!meta.isDelete && data) addPurchaseApplyOperations(operations, data, sourceId);
+  if (operations.length) await commitBatchOperations(operations);
+}
+
+function addPurchaseReversalOperations(operations, previous) {
+  if (!previous) return;
+  addRawMaterialStockOperation(operations, previous.rawMaterialId, previous.item || previous.itemName, -getNumberFromValue(previous.qty), "Purchase reversal", previous.invoice, previous.id, {
+    materialId: previous.rawMaterialId,
+    name: previous.item || previous.itemName,
+    quantity: previous.qty,
+    unit: previous.unit,
+    rate: previous.rate
+  });
+  addSupplierPayableOperation(operations, previous.supplier, -getNumberFromValue(previous.balancePayable));
+}
+
+function addPurchaseApplyOperations(operations, data, sourceId) {
+  addRawMaterialStockOperation(operations, data.rawMaterialId, data.item, data.qty, "Purchase stock in", data.invoice, sourceId, {
+    materialId: data.rawMaterialId,
+    name: data.item,
+    quantity: data.qty,
+    unit: data.unit,
+    rate: data.rate
+  });
+  const supplier = findSupplierByName(data.supplier);
+  addSupplierPayableOperation(operations, data.supplier, data.balancePayable);
+  addSupplierLedgerOperation(operations, {
+    sourceId,
+    supplier,
+    supplierName: data.supplier,
+    date: data.date,
+    type: "purchase",
+    amount: data.totalAmount,
+    balanceDelta: data.totalAmount,
+    reference: data.invoice,
+    notes: `Purchase invoice for ${data.item}`,
+    paymentMode: data.paymentMode
+  });
+  if (data.paidAmount > 0) {
+    addSupplierLedgerOperation(operations, {
+      sourceId,
+      supplier,
+      supplierName: data.supplier,
+      date: data.date,
+      type: "payment",
+      amount: data.paidAmount,
+      balanceDelta: -data.paidAmount,
+      reference: data.invoice,
+      notes: `Payment recorded against ${data.invoice}`,
+      paymentMode: data.paymentMode
+    });
+  }
+  addUnifiedLedgerCreateOperation(operations, data, {
+    sourceId,
+    moduleName: "Purchase",
+    amount: data.totalAmount,
+    direction: "journal",
+    reference: data.invoice,
+    description: `Purchase invoice ${data.invoice} posted for ${data.item}`
+  });
+}
+
+function addSupplierLedgerOperation(operations, meta) {
+  const supplier = meta.supplier || findSupplierByName(meta.supplierName);
+  operations.push({
+    type: "set",
+    collectionName: COLLECTIONS.supplierLedger,
+    payload: {
+      sourceId: meta.sourceId || null,
+      supplierId: supplier?.id || null,
+      supplierName: supplier?.name || meta.supplierName || "",
+      date: meta.date || new Date().toISOString().slice(0, 10),
+      type: meta.type,
+      amount: getNumberFromValue(meta.amount),
+      balanceDelta: getNumberFromValue(meta.balanceDelta),
+      reference: meta.reference || "",
+      paymentMode: meta.paymentMode || "",
+      notes: meta.notes || ""
+    }
+  });
+}
+
+function addSupplierPayableOperation(operations, supplierName, balanceDelta) {
+  if (!supplierName || !balanceDelta) return;
+  const supplier = findSupplierByName(supplierName);
+  if (!supplier?.id) return;
+  const existingOperation = operations.find((operation) => operation.type === "update" && operation.collectionName === COLLECTIONS.suppliers && operation.id === supplier.id);
+  const basePayable = existingOperation ? getNumberFromValue(existingOperation.payload.currentPayable) : getSupplierComputedPayable(supplier);
+  const payload = existingOperation?.payload || {};
+  payload.currentPayable = Math.max(basePayable + balanceDelta, 0);
+  payload.lastPayableUpdate = new Date().toISOString().slice(0, 10);
+  if (!existingOperation) operations.push({ type: "update", collectionName: COLLECTIONS.suppliers, id: supplier.id, payload });
+}
+
+function addLinkedSupplierLedgerDeleteOperations(operations, sourceId) {
+  if (!sourceId) return;
+  getStoredRecords(KEYS.supplierLedger)
+    .filter((record) => record.sourceId === sourceId)
+    .forEach((record) => operations.push({ type: "delete", collectionName: COLLECTIONS.supplierLedger, id: record.id }));
+}
+
+function findSupplierByName(name) {
+  return getStoredRecords(KEYS.suppliers).find((supplier) => (supplier.name || "").toLowerCase() === String(name || "").toLowerCase());
+}
+
+async function voidPurchase(id) {
+  const purchase = getStoredRecords(KEYS.purchases).find((record) => record.id === id);
+  if (!purchase || purchase.status === "Voided") return;
+  if (!confirm("Void this purchase invoice and reverse raw material stock/payables?")) return;
+  try {
+    await reconcilePurchasePayableAndRawStock(null, { isDelete: true, id, previous: purchase });
+    await updateCollectionRecord(COLLECTIONS.purchases, id, { status: "Voided", paymentStatus: "Voided", voidedAt: new Date().toISOString() });
+    showToast("Purchase voided and ledger reversed.", "success");
+    await refreshActiveData();
+  } catch (err) {
+    console.error("Purchase void failed", err);
+    showToast(getFirebaseErrorMessage(err, "Unable to void purchase."), "error");
+  }
+}
+
 
 async function reconcileRawMaterialOpeningLedger(data, meta) {
   const operations = [];
@@ -3582,12 +3928,15 @@ function getFormConfigForKey(key) {
     },
     [KEYS.suppliers]: {
       submitButtonId: "supplier-submit-btn",
+      beforeDelete: (record) => reconcileSupplierOpeningLedger(null, { isDelete: true, id: record.id, previous: record }),
       populate: (record) => {
         setValue("supp-name", record.name);
         setValue("supp-phone", record.phone);
         setValue("supp-place", record.place);
         setValue("supp-address", record.address);
         setValue("supp-gst", record.gst);
+        setValue("supp-opening-payable", record.openingPayable);
+        setValue("supp-current-payable", getSupplierComputedPayable(record));
         setValue("supp-item", record.itemSupplied);
         setValue("supp-terms", record.terms);
         setValue("supp-notes", record.notes);
@@ -3610,7 +3959,7 @@ function getFormConfigForKey(key) {
     [KEYS.purchases]: {
       submitButtonId: "purchase-submit-btn",
       populate: populatePurchase,
-      beforeDelete: (record) => reconcileStockAndLedger(null, { id: record.id, previous: record, moduleName: "Purchase" })
+      beforeDelete: (record) => reconcilePurchasePayableAndRawStock(null, { isDelete: true, id: record.id, previous: record })
     },
     [KEYS.inventory]: { submitButtonId: "inventory-submit-btn", populate: populateInventory },
     [KEYS.rawMaterials]: {
@@ -3667,11 +4016,15 @@ function populatePurchase(record) {
   setValue("pur-date", record.date);
   setValue("pur-invoice", record.invoice);
   setValue("pur-supplier", record.supplier);
-  setValue("pur-item", record.item);
+  refreshSupplierPurchaseOptions();
+  setValue("pur-raw-material", record.rawMaterialId);
+  setValue("pur-item", record.item || record.itemName);
   setValue("pur-qty", record.qty);
   setValue("pur-unit", record.unit);
   setValue("pur-rate", record.rate);
   setValue("pur-total", record.totalAmount);
+  setValue("pur-paid", record.paidAmount);
+  setValue("pur-balance", record.balancePayable);
   setValue("pur-mode", record.paymentMode);
   setValue("pur-status", record.paymentStatus);
   setValue("pur-notes", record.notes);
