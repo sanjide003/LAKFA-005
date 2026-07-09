@@ -1385,17 +1385,34 @@
           </div>
           <div class="dashboard-grid" id="advanced-report-cards"></div>
           <div class="card" style="margin-top: 1.5rem;">
-            <div class="card-title">Report Export Actions</div>
-            <div class="form-grid-3" style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.75rem;">
-              <button class="btn-primary" type="button" data-report-export="profitLoss" data-export-format="csv">Profit/Loss CSV</button>
-              <button class="btn-primary" type="button" data-report-export="investor" data-export-format="csv">Investor CSV</button>
-              <button class="btn-primary" type="button" data-report-export="stock" data-export-format="csv">Stock CSV</button>
-              <button class="btn-primary" type="button" data-report-export="assets" data-export-format="csv">Asset Register CSV</button>
-              <button class="btn-secondary" type="button" data-report-export="profitLoss" data-export-format="pdf">Profit/Loss PDF</button>
-              <button class="btn-secondary" type="button" data-report-export="salesPurchase" data-export-format="pdf">Sales/Purchase PDF</button>
-              <button class="btn-secondary" type="button" data-report-export="stock" data-export-format="pdf">Stock PDF</button>
-              <button class="btn-secondary" type="button" data-report-export="assets" data-export-format="pdf">Asset Register PDF</button>
+            <div class="card-title">ERP Report Selector</div>
+            <div class="form-grid-3" style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.75rem; align-items: end;">
+              <div class="form-group"><label>Report</label><select id="erp-report-selector" class="form-control"><option value="balanceSheet">Balance Sheet</option><option value="profitLoss">Profit / Loss</option><option value="gst">GST Summary</option><option value="hsnTax">HSN / Item Tax</option><option value="reconciliation">Reconciliation Alerts</option><option value="ledgerPreview">Ledger Preview</option><option value="stock">Stock Valuation</option><option value="assets">Asset Register</option><option value="investor">Investor Capital</option></select></div>
+              <button class="btn-primary" type="button" id="erp-report-csv-btn">Export Selected CSV</button>
+              <button class="btn-secondary" type="button" id="erp-report-pdf-btn">Print / PDF Selected</button>
             </div>
+          </div>
+          <div class="card" style="margin-top: 1.5rem;">
+            <div class="card-title">Quick Export Actions</div>
+            <div class="form-grid-3" style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.75rem;">
+              <button class="btn-primary" type="button" data-report-export="balanceSheet" data-export-format="csv">Balance Sheet CSV</button>
+              <button class="btn-primary" type="button" data-report-export="gst" data-export-format="csv">GST Summary CSV</button>
+              <button class="btn-primary" type="button" data-report-export="hsnTax" data-export-format="csv">HSN Tax CSV</button>
+              <button class="btn-primary" type="button" data-report-export="reconciliation" data-export-format="csv">Reconciliation CSV</button>
+              <button class="btn-primary" type="button" data-report-export="ledgerPreview" data-export-format="csv">Ledger Preview CSV</button>
+              <button class="btn-primary" type="button" data-report-export="assets" data-export-format="csv">Asset Register CSV</button>
+              <button class="btn-secondary" type="button" data-report-export="balanceSheet" data-export-format="pdf">Balance Sheet PDF</button>
+              <button class="btn-secondary" type="button" data-report-export="gst" data-export-format="pdf">GST Summary PDF</button>
+              <button class="btn-secondary" type="button" data-report-export="hsnTax" data-export-format="pdf">HSN Tax PDF</button>
+            </div>
+          </div>
+          <div class="card" style="margin-top: 1.5rem;">
+            <div class="card-title">Reconciliation Alerts</div>
+            <div id="reconciliation-alerts-table" class="table-responsive"></div>
+          </div>
+          <div class="card" style="margin-top: 1.5rem;">
+            <div class="card-title">Ledger Previews</div>
+            <div id="ledger-preview-table" class="table-responsive"></div>
           </div>
           <div class="card" style="margin-top: 1.5rem;">
             <div class="card-title">Report Details</div>
@@ -1414,7 +1431,9 @@
             <div class="card-title">GST Export Actions</div>
             <div class="form-grid-2">
               <button class="btn-primary" type="button" data-report-export="gst" data-export-format="csv">GST Summary CSV</button>
+              <button class="btn-primary" type="button" data-report-export="hsnTax" data-export-format="csv">HSN / Item Tax CSV</button>
               <button class="btn-secondary" type="button" data-report-export="gst" data-export-format="pdf">GST Summary PDF</button>
+              <button class="btn-secondary" type="button" data-report-export="hsnTax" data-export-format="pdf">HSN / Item Tax PDF</button>
             </div>
           </div>
           <div class="card" style="margin-top: 1.5rem;">

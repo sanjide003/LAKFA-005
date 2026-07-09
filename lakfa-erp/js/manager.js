@@ -17,6 +17,7 @@ const KEYS = {
   stockLedger: "lakfa_stock_ledger",
   ledgerEntries: "lakfa_ledger_entries",
   supplierLedger: "lakfa_supplier_ledger",
+  customerLedger: "lakfa_customer_ledger",
   sales: "lakfa_sales",
   orders: "lakfa_orders",
   delivery: "lakfa_delivery",
@@ -84,6 +85,7 @@ const COLLECTION_BY_KEY = {
   [KEYS.stockLedger]: COLLECTIONS.stockLedger,
   [KEYS.ledgerEntries]: COLLECTIONS.ledgerEntries,
   [KEYS.supplierLedger]: COLLECTIONS.supplierLedger,
+  [KEYS.customerLedger]: COLLECTIONS.customerLedger,
   [KEYS.sales]: COLLECTIONS.sales,
   [KEYS.orders]: COLLECTIONS.orders,
   [KEYS.delivery]: COLLECTIONS.delivery,
@@ -2576,6 +2578,19 @@ function findRawMaterialByName(name) {
 }
 
 
+const REPORT_LABELS = {
+  balanceSheet: "Balance Sheet",
+  profitLoss: "Profit / Loss",
+  investor: "Investor Capital",
+  stock: "Stock Valuation",
+  assets: "Asset Register",
+  salesPurchase: "Sales / Purchase",
+  gst: "GST Summary",
+  hsnTax: "HSN / Item Tax",
+  reconciliation: "Reconciliation Alerts",
+  ledgerPreview: "Ledger Preview"
+};
+
 function initReportExportActions() {
   document.querySelectorAll("[data-report-export]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -2585,18 +2600,31 @@ function initReportExportActions() {
       if (format === "pdf") printReportPdf(reportType);
     });
   });
+  document.getElementById("erp-report-selector")?.addEventListener("change", (event) => renderSelectedErpReport(event.target.value));
+  document.getElementById("erp-report-csv-btn")?.addEventListener("click", () => exportReportCsv(getSelectedReportType()));
+  document.getElementById("erp-report-pdf-btn")?.addEventListener("click", () => printReportPdf(getSelectedReportType()));
+}
+
+function getSelectedReportType() {
+  return document.getElementById("erp-report-selector")?.value || "balanceSheet";
 }
 
 function getReportRows(reportType) {
   const sales = getStoredRecords(KEYS.sales);
+  const orders = getStoredRecords(KEYS.orders);
   const purchases = getStoredRecords(KEYS.purchases);
   const expenses = getStoredRecords(KEYS.expenses);
   const income = getStoredRecords(KEYS.income);
   const inventory = getStoredRecords(KEYS.inventory);
+  const rawMaterials = getStoredRecords(KEYS.rawMaterials);
   const investors = getStoredRecords(KEYS.investors);
   const sharing = getStoredRecords(KEYS.sharing);
   const salaryPayments = getStoredRecords(KEYS.salaryPayments).filter((row) => row.status !== "Voided");
   const assets = getStoredRecords(KEYS.assets);
+  const loans = getStoredRecords(KEYS.managerLoans).filter((loan) => loan.status !== "Voided");
+  const accounts = getStoredRecords(KEYS.financeAccounts);
+
+  if (reportType === "balanceSheet") return getBalanceSheetRows({ sales, orders, purchases, expenses, income, inventory, rawMaterials, investors, assets, loans, accounts });
 
   if (reportType === "profitLoss") {
     return [
@@ -2612,8 +2640,8 @@ function getReportRows(reportType) {
   if (reportType === "investor") {
     return investors.map((investor) => ({
       investor: investor.name || investor.email || investor.id,
-      capital: parseFloat(investor.amount || 0),
-      share: parseFloat(investor.share || 0),
+      capital: parseFloat(investor.amount || investor.initialInvestment || 0),
+      share: parseFloat(investor.share || investor.sharePercentage || 0),
       paid: sharing.filter((row) => row.investor === investor.name || row.investorId === investor.id).filter((row) => row.status === "Paid").reduce((sum, row) => sum + parseFloat(row.amount || 0), 0),
       pending: sharing.filter((row) => row.investor === investor.name || row.investorId === investor.id).filter((row) => row.status !== "Paid").reduce((sum, row) => sum + parseFloat(row.amount || 0), 0)
     }));
@@ -2649,46 +2677,150 @@ function getReportRows(reportType) {
     ];
   }
 
-  if (reportType === "gst") {
-    const salesTaxable = sumTaxableEstimate(sales, "finalAmount");
-    const purchaseTaxable = sumTaxableEstimate(purchases, "totalAmount");
-    const outputGst = sumRecords(sales, "finalAmount") - salesTaxable;
-    const inputGst = sumRecords(purchases, "totalAmount") - purchaseTaxable;
-    return [
-      { metric: "Sales Taxable Value", amount: salesTaxable },
-      { metric: "Output GST", amount: outputGst },
-      { metric: "Purchase Taxable Value", amount: purchaseTaxable },
-      { metric: "Input GST", amount: inputGst },
-      { metric: "Estimated GST Payable", amount: outputGst - inputGst }
-    ];
-  }
+  if (reportType === "gst") return getGstSummaryRows(sales, purchases);
+  if (reportType === "hsnTax") return getHsnTaxRows(sales, purchases);
+  if (reportType === "reconciliation") return getReconciliationRows();
+  if (reportType === "ledgerPreview") return getLedgerPreviewRows();
 
   return [];
+}
+
+function getBalanceSheetRows({ sales, orders, purchases, inventory, rawMaterials, investors, assets, loans, accounts }) {
+  const cash = getStoredRecords(KEYS.cashBook);
+  const bank = getStoredRecords(KEYS.bankBook);
+  const cashBalance = cash.length ? getNumberFromValue(cash[cash.length - 1].balance) : 0;
+  const bankBalance = bank.length ? getNumberFromValue(bank[bank.length - 1].balance) : 0;
+  const accountBalances = accounts.reduce((sum, account) => sum + getNumberFromValue(account.currentBalance ?? account.openingBalance), 0);
+  const inventoryValue = inventory.reduce((sum, item) => sum + getNumberFromValue(item.currentStock ?? item.stockIn) * getNumberFromValue(item.costPrice || item.rate || item.avgCost), 0);
+  const rawMaterialValue = rawMaterials.reduce((sum, item) => sum + getNumberFromValue(item.currentStock ?? item.openingStock) * getNumberFromValue(item.rate), 0);
+  const fixedAssets = assets.filter((asset) => !["Voided", "Cancelled"].includes(asset.status)).reduce((sum, asset) => sum + getNumberFromValue(asset.purchaseValue), 0);
+  const receivables = [...sales, ...orders].filter((row) => !["Paid", "Cancelled", "Voided"].includes(row.paymentStatus || row.status)).reduce((sum, row) => sum + getNumberFromValue(row.balanceAmount ?? row.balanceDue ?? row.finalAmount ?? row.totalAmount), 0);
+  const payables = purchases.filter((row) => !["Paid", "Voided", "Cancelled"].includes(row.paymentStatus || row.status)).reduce((sum, row) => sum + getNumberFromValue(row.balancePayable ?? row.totalAmount), 0);
+  const investorCapital = investors.reduce((sum, investor) => sum + getNumberFromValue(investor.amount ?? investor.initialInvestment), 0);
+  const loanOutstanding = loans.reduce((sum, loan) => sum + getLoanOutstanding(loan.id), 0);
+  const totalAssets = cashBalance + bankBalance + accountBalances + inventoryValue + rawMaterialValue + fixedAssets + receivables;
+  const totalLiabilities = payables + investorCapital + loanOutstanding;
+  return [
+    { section: "Assets", account: "Cash", amount: cashBalance, note: "Latest cashbook balance" },
+    { section: "Assets", account: "Bank", amount: bankBalance, note: "Latest bankbook balance" },
+    { section: "Assets", account: "Finance Accounts", amount: accountBalances, note: "Account master current balances" },
+    { section: "Assets", account: "Inventory", amount: inventoryValue, note: "Finished goods valuation" },
+    { section: "Assets", account: "Raw Materials", amount: rawMaterialValue, note: "Raw material valuation" },
+    { section: "Assets", account: "Fixed Assets", amount: fixedAssets, note: "Asset register purchase value" },
+    { section: "Assets", account: "Receivables", amount: receivables, note: "Unpaid customer balances" },
+    { section: "Liabilities", account: "Supplier Payables", amount: payables, note: "Unpaid purchase balances" },
+    { section: "Liabilities/Equity", account: "Investor Capital", amount: investorCapital, note: "Investor capital" },
+    { section: "Liabilities", account: "Manager Loans", amount: loanOutstanding, note: "Loan outstanding" },
+    { section: "Summary", account: "Total Assets", amount: totalAssets, note: "Assets subtotal" },
+    { section: "Summary", account: "Total Liabilities + Equity", amount: totalLiabilities, note: "Liabilities/equity subtotal" },
+    { section: "Summary", account: "Net Position", amount: totalAssets - totalLiabilities, note: "Assets - liabilities/equity" }
+  ];
+}
+
+function getGstSummaryRows(sales, purchases) {
+  const salesTaxable = sumTaxableEstimate(sales, "finalAmount");
+  const purchaseTaxable = sumTaxableEstimate(purchases, "totalAmount");
+  const salesTotal = sumRecords(sales, "finalAmount");
+  const purchaseTotal = sumRecords(purchases, "totalAmount");
+  const outputGst = salesTotal - salesTaxable;
+  const inputGst = purchaseTotal - purchaseTaxable;
+  return [
+    { metric: "Sales Taxable Value", taxable: salesTaxable, gst: outputGst, total: salesTotal, type: "Output" },
+    { metric: "Output GST", taxable: salesTaxable, gst: outputGst, total: outputGst, type: "Output" },
+    { metric: "Purchase Taxable Value", taxable: purchaseTaxable, gst: inputGst, total: purchaseTotal, type: "Input" },
+    { metric: "Input GST", taxable: purchaseTaxable, gst: inputGst, total: inputGst, type: "Input" },
+    { metric: "Estimated GST Payable", taxable: salesTaxable - purchaseTaxable, gst: outputGst - inputGst, total: outputGst - inputGst, type: outputGst >= inputGst ? "Payable" : "Credit" }
+  ];
+}
+
+function getHsnTaxRows(sales, purchases) {
+  const buckets = new Map();
+  const addItems = (records, source, amountField) => records.forEach((record) => extractReportItems(record).forEach((item) => {
+    const hsn = item.hsn || item.hsnCode || item.code || item.name || "Unmapped";
+    const qty = getNumberFromValue(item.qty ?? item.quantity ?? 1);
+    const total = getNumberFromValue(item.total ?? item.amount ?? item.lineTotal ?? item.price ?? record[amountField]);
+    const gstRate = getNumberFromValue(item.gstRate ?? item.taxRate ?? record.gstRate ?? 18);
+    const taxable = total / (1 + gstRate / 100);
+    const gst = total - taxable;
+    const row = buckets.get(hsn) || { hsn, item: item.name || item.product || hsn, salesQty: 0, salesTaxable: 0, salesGst: 0, purchaseQty: 0, purchaseTaxable: 0, purchaseGst: 0 };
+    if (source === "sales") {
+      row.salesQty += qty; row.salesTaxable += taxable; row.salesGst += gst;
+    } else {
+      row.purchaseQty += qty; row.purchaseTaxable += taxable; row.purchaseGst += gst;
+    }
+    buckets.set(hsn, row);
+  }));
+  addItems(sales, "sales", "finalAmount");
+  addItems(purchases, "purchases", "totalAmount");
+  return Array.from(buckets.values()).map((row) => ({ ...row, netGst: row.salesGst - row.purchaseGst }));
+}
+
+function extractReportItems(record) {
+  if (Array.isArray(record.items)) return record.items;
+  if (Array.isArray(record.products)) return record.products;
+  if (Array.isArray(record.rawMaterials)) return record.rawMaterials;
+  if (record.item) return [{ name: record.item, qty: record.quantity, total: record.finalAmount || record.totalAmount || record.amount, hsn: record.hsn || record.hsnCode }];
+  if (record.product) return [{ name: record.product, qty: record.quantity, total: record.finalAmount || record.totalAmount || record.amount, hsn: record.hsn || record.hsnCode }];
+  return [{ name: record.customerName || record.supplierName || record.invoiceNo || record.id || "Unmapped", qty: record.quantity || 1, total: record.finalAmount || record.totalAmount || record.amount, hsn: record.hsn || record.hsnCode || "Unmapped" }];
+}
+
+function getReconciliationRows() {
+  const alerts = [];
+  getStoredRecords(KEYS.inventory).forEach((item) => {
+    const stock = getNumberFromValue(item.currentStock ?? item.stockIn);
+    if (stock < 0) alerts.push({ severity: "High", module: "Inventory", alert: "Negative stock", reference: item.name || item.itemName || item.id, amount: stock });
+  });
+  getStoredRecords(KEYS.rawMaterials).forEach((item) => {
+    const stock = getNumberFromValue(item.currentStock ?? item.openingStock);
+    if (stock < 0) alerts.push({ severity: "High", module: "Raw Materials", alert: "Negative raw material stock", reference: item.name || item.id, amount: stock });
+  });
+  getStoredRecords(KEYS.purchases).filter((row) => !["Paid", "Voided", "Cancelled"].includes(row.paymentStatus || row.status)).forEach((row) => alerts.push({ severity: "Medium", module: "Suppliers", alert: "Unpaid supplier payable", reference: row.invoiceNo || row.supplierName || row.id, amount: getNumberFromValue(row.balancePayable ?? row.totalAmount) }));
+  [...getStoredRecords(KEYS.sales), ...getStoredRecords(KEYS.orders)].filter((row) => !["Paid", "Voided", "Cancelled"].includes(row.paymentStatus || row.status)).forEach((row) => alerts.push({ severity: "Medium", module: "Customers", alert: "Unpaid customer receivable", reference: row.invoiceNo || row.customer || row.customerName || row.id, amount: getNumberFromValue(row.balanceAmount ?? row.balanceDue ?? row.finalAmount ?? row.totalAmount) }));
+  const ledgerBalance = getStoredRecords(KEYS.ledgerEntries).reduce((sum, entry) => sum + getNumberFromValue(entry.debit) - getNumberFromValue(entry.credit), 0);
+  if (Math.abs(ledgerBalance) > 0.01) alerts.push({ severity: "Info", module: "Ledger", alert: "Ledger debit/credit mismatch", reference: "ledgerEntries", amount: ledgerBalance });
+  return alerts;
+}
+
+function getLedgerPreviewRows() {
+  const preview = [];
+  const addPreview = (key, label, amountGetter) => getStoredRecords(key).slice(0, 25).forEach((entry) => preview.push({ ledger: label, date: entry.date || entry.createdAt || "-", reference: entry.referenceId || entry.sourceId || entry.id, description: entry.description || entry.desc || entry.notes || entry.type || "-", debit: amountGetter(entry, "debit"), credit: amountGetter(entry, "credit") }));
+  addPreview(KEYS.customerLedger, "Customer Ledger", (entry, side) => side === "debit" ? getNumberFromValue(entry.debit || entry.amountDue || entry.amount) : getNumberFromValue(entry.credit || entry.amountPaid));
+  addPreview(KEYS.supplierLedger, "Supplier Ledger", (entry, side) => side === "debit" ? getNumberFromValue(entry.debit || entry.paymentAmount) : getNumberFromValue(entry.credit || entry.amount));
+  addPreview(KEYS.stockLedger, "Stock Ledger", (entry, side) => side === "debit" ? getNumberFromValue(entry.stockIn || entry.quantityIn) : getNumberFromValue(entry.stockOut || entry.quantityOut));
+  addPreview(KEYS.rawMaterialLedger, "Raw Material Ledger", (entry, side) => side === "debit" ? getNumberFromValue(entry.stockIn || entry.quantityIn) : getNumberFromValue(entry.stockOut || entry.quantityOut));
+  addPreview(KEYS.ledgerEntries, "Unified Ledger", (entry, side) => getNumberFromValue(entry[side]));
+  return preview;
+}
+
+function renderSelectedErpReport(reportType = getSelectedReportType()) {
+  renderReportTable("advanced-report-table", reportType);
 }
 
 function renderAdvancedReports() {
   const cards = document.getElementById("advanced-report-cards");
   if (cards) {
-    const profit = getReportRows("profitLoss").find((row) => row.metric === "Estimated Profit")?.amount || 0;
-    const stockValue = getReportRows("stock").reduce((sum, row) => sum + row.valuation, 0);
-    const salesPurchase = getReportRows("salesPurchase");
-    const salaryTotal = getReportRows("profitLoss").find((row) => row.metric === "Salary Expense")?.amount || 0;
-    const assetValue = getReportRows("assets").filter((row) => !["Voided", "Cancelled"].includes(row.status)).reduce((sum, row) => sum + getNumberFromValue(row.purchaseValue), 0);
-    cards.innerHTML = reportCard("Profit / Loss", formatCurrency(profit), "Sales + income - purchases - expenses - salary")
-      + reportCard("Stock Valuation", formatCurrency(stockValue), "Current stock × available cost")
-      + reportCard("Sales Total", formatCurrency(salesPurchase.find((row) => row.metric === "Sales Total")?.value || 0), "Firestore sales summary")
-      + reportCard("Purchase Total", formatCurrency(salesPurchase.find((row) => row.metric === "Purchase Total")?.value || 0), "Firestore purchase summary")
-      + reportCard("Salary Expense", formatCurrency(salaryTotal), "Employee salary payments")
-      + reportCard("Asset Valuation", formatCurrency(assetValue), "Active asset register value");
+    const balanceRows = getReportRows("balanceSheet");
+    const totalAssets = balanceRows.find((row) => row.account === "Total Assets")?.amount || 0;
+    const totalLiabilities = balanceRows.find((row) => row.account === "Total Liabilities + Equity")?.amount || 0;
+    const gstPayable = getReportRows("gst").find((row) => row.metric === "Estimated GST Payable")?.total || 0;
+    const alerts = getReportRows("reconciliation");
+    const ledgers = getReportRows("ledgerPreview");
+    cards.innerHTML = reportCard("Total Assets", formatCurrency(totalAssets), "Balance sheet assets")
+      + reportCard("Liabilities + Equity", formatCurrency(totalLiabilities), "Payables, capital and loans")
+      + reportCard("GST Payable", formatCurrency(gstPayable), "Output GST - input GST")
+      + reportCard("Reconciliation Alerts", String(alerts.length), "Stock, payable, receivable, ledger checks")
+      + reportCard("Ledger Preview Rows", String(ledgers.length), "Customer/supplier/stock/raw/unified ledgers");
   }
-  renderReportTable("advanced-report-table", "profitLoss");
+  renderSelectedErpReport();
+  renderReportTable("reconciliation-alerts-table", "reconciliation");
+  renderReportTable("ledger-preview-table", "ledgerPreview");
 }
 
 function renderGstReports() {
   const cards = document.getElementById("gst-report-cards");
   const rows = getReportRows("gst");
   if (cards) {
-    cards.innerHTML = rows.map((row) => reportCard(row.metric, formatCurrency(row.amount), "Estimated from Firestore invoice totals")).join("");
+    cards.innerHTML = rows.map((row) => reportCard(row.metric, formatCurrency(row.total), `${row.type}: Taxable ${formatCurrency(row.taxable)} / GST ${formatCurrency(row.gst)}`)).join("");
   }
   renderReportTable("gst-report-table", "gst");
 }
@@ -2733,7 +2865,8 @@ function printReportPdf(reportType) {
     return;
   }
   const headers = Object.keys(rows[0]);
-  const html = `<!doctype html><html><head><meta charset="utf-8"><title>${reportType} report</title><style>@page{size:A4;margin:12mm}body{font-family:Arial,sans-serif;color:#0f172a}h1{color:#0f766e}table{width:100%;border-collapse:collapse;font-size:12px}th,td{border:1px solid #cbd5e1;padding:8px;text-align:left}th{background:#f8fafc}</style></head><body><h1>${escapeHtml(reportType)} Firestore Report</h1><table><thead><tr>${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("")}</tr></thead><tbody>${rows.map((row) => `<tr>${headers.map((header) => `<td>${formatReportCell(row[header])}</td>`).join("")}</tr>`).join("")}</tbody></table></body></html>`;
+  const label = REPORT_LABELS[reportType] || reportType;
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(label)} report</title><style>@page{size:A4;margin:12mm}body{font-family:Arial,sans-serif;color:#0f172a}h1{color:#0f766e}table{width:100%;border-collapse:collapse;font-size:12px}th,td{border:1px solid #cbd5e1;padding:8px;text-align:left}th{background:#f8fafc}</style></head><body><h1>${escapeHtml(label)} Firestore Report</h1><table><thead><tr>${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("")}</tr></thead><tbody>${rows.map((row) => `<tr>${headers.map((header) => `<td>${formatReportCell(row[header])}</td>`).join("")}</tr>`).join("")}</tbody></table></body></html>`;
   const printWindow = window.open("", "_blank", "width=900,height=700");
   if (!printWindow) {
     showToast("Popup blocked. Please allow popups to print this report.", "error");
