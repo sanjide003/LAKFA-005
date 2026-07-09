@@ -33,6 +33,8 @@ const KEYS = {
   employees: "lakfa_employees",
   salaryPayments: "lakfa_salary_payments",
   assets: "lakfa_assets",
+  managerLoans: "lakfa_manager_loans",
+  loanRepayments: "lakfa_loan_repayments",
   financeAccounts: "lakfa_finance_accounts",
   financeCategories: "lakfa_finance_categories",
   financeTransfers: "lakfa_finance_transfers",
@@ -59,7 +61,7 @@ const WRITABLE_FORM_IDS = new Set([
   "purchase-form", "inventory-form", "raw-material-form", "sales-form", "orders-form", "delivery-form",
   "expenses-form", "income-form", "cashbook-form", "bankbook-form", "production-form", "sharing-form",
   "finance-account-form", "finance-category-form", "finance-transfer-form", "daily-account-form", "payment-request-form",
-  "employee-form", "salary-payment-form", "asset-form"
+  "employee-form", "salary-payment-form", "asset-form", "manager-loan-form", "loan-repayment-form"
 ]);
 const WRITABLE_KEYS = new Set([
   KEYS.products, KEYS.customers, KEYS.suppliers, KEYS.investors,
@@ -67,7 +69,7 @@ const WRITABLE_KEYS = new Set([
   KEYS.expenses, KEYS.income, KEYS.cashBook, KEYS.bankBook, KEYS.production, KEYS.sharing,
   KEYS.financeAccounts, KEYS.financeCategories, KEYS.financeTransfers, KEYS.dailyAccounts,
   KEYS.investorExpenses, KEYS.investorPaymentRequests, KEYS.notifications, KEYS.profitDistributions, KEYS.auditLogs,
-  KEYS.employees, KEYS.salaryPayments, KEYS.assets
+  KEYS.employees, KEYS.salaryPayments, KEYS.assets, KEYS.managerLoans, KEYS.loanRepayments
 ]);
 
 const COLLECTION_BY_KEY = {
@@ -102,6 +104,8 @@ const COLLECTION_BY_KEY = {
   [KEYS.employees]: COLLECTIONS.employees,
   [KEYS.salaryPayments]: COLLECTIONS.salaryPayments,
   [KEYS.assets]: COLLECTIONS.assets,
+  [KEYS.managerLoans]: COLLECTIONS.managerLoans,
+  [KEYS.loanRepayments]: COLLECTIONS.loanRepayments,
   [KEYS.sharing]: COLLECTIONS.profitDistributions
 };
 
@@ -135,6 +139,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   initInvestorRequestUi();
   initProfitSharingAutomationUi();
   initEmployeeSalaryUi();
+  initManagerLoansUi();
 
   // 6. Initialize report export actions
   initReportExportActions();
@@ -584,6 +589,9 @@ function renderModule(sectionId) {
       break;
     case "assets":
       renderAssetsDashboard();
+      break;
+    case "manager-loans":
+      renderManagerLoansDashboard();
       break;
     case "accounting":
       renderAccountingSummary();
@@ -1724,6 +1732,106 @@ async function voidAsset(id) {
   await refreshActiveData();
 }
 
+
+function initManagerLoansUi() {
+  ["close-loan-history-modal-btn", "cancel-loan-history-modal-btn"].forEach((id) => document.getElementById(id)?.addEventListener("click", closeLoanHistoryModal));
+  document.getElementById("loan-history-modal")?.addEventListener("click", (event) => {
+    if (event.target.id === "loan-history-modal") closeLoanHistoryModal();
+  });
+  refreshLoanRepaymentOptions();
+}
+
+function refreshLoanRepaymentOptions() {
+  const select = document.getElementById("repayment-loan");
+  if (!select) return;
+  const current = select.value;
+  select.innerHTML = `<option value="">Select loan</option>` + getStoredRecords(KEYS.managerLoans)
+    .filter((loan) => !["Closed", "Voided", "Cancelled"].includes(loan.status))
+    .map((loan) => `<option value="${escapeHtml(loan.id)}">${escapeHtml(loan.lender)} - ${formatCurrency(getLoanOutstanding(loan.id))}</option>`).join("");
+  select.value = current;
+}
+
+function getLoanById(id) {
+  return getStoredRecords(KEYS.managerLoans).find((loan) => loan.id === id);
+}
+
+function getLoanRepayments(loanId) {
+  return getStoredRecords(KEYS.loanRepayments).filter((repayment) => repayment.loanId === loanId && repayment.status !== "Voided");
+}
+
+function getLoanPaidAmount(loanId) {
+  return getLoanRepayments(loanId).reduce((sum, repayment) => sum + getNumberFromValue(repayment.amount), 0);
+}
+
+function getLoanOutstanding(loanId) {
+  const loan = getLoanById(loanId);
+  if (!loan) return 0;
+  return Math.max(getNumberFromValue(loan.principalAmount) - getLoanPaidAmount(loanId), 0);
+}
+
+function renderManagerLoansDashboard() {
+  refreshLoanRepaymentOptions();
+  renderManagerLoanSummaryCards();
+  renderManagerLoansTable();
+  renderLoanRepaymentsTable();
+}
+
+function renderManagerLoanSummaryCards() {
+  const cards = document.getElementById("manager-loan-summary-cards");
+  if (!cards) return;
+  const loans = getStoredRecords(KEYS.managerLoans).filter((loan) => loan.status !== "Voided");
+  const totalPrincipal = loans.reduce((sum, loan) => sum + getNumberFromValue(loan.principalAmount), 0);
+  const totalOutstanding = loans.reduce((sum, loan) => sum + getLoanOutstanding(loan.id), 0);
+  const activeLoans = loans.filter((loan) => getLoanOutstanding(loan.id) > 0 && loan.status !== "Closed");
+  cards.innerHTML = reportCard("Active Loans", String(activeLoans.length), "Open manager loan accounts")
+    + reportCard("Principal", formatCurrency(totalPrincipal), "Total borrowed principal")
+    + reportCard("Outstanding", formatCurrency(totalOutstanding), "Principal minus repayments");
+}
+
+function renderManagerLoansTable() {
+  const tbody = document.getElementById("manager-loans-table-body");
+  if (!tbody) return;
+  const loans = getStoredRecords(KEYS.managerLoans);
+  tbody.innerHTML = loans.length ? loans.map((loan) => {
+    const paid = getLoanPaidAmount(loan.id);
+    const outstanding = getLoanOutstanding(loan.id);
+    return `<tr><td><strong>${escapeHtml(loan.lender || '')}</strong><br><small>${escapeHtml(loan.contact || '')}</small></td><td>${escapeHtml(loan.purpose || '')}</td><td><strong>${formatCurrency(loan.principalAmount)}</strong></td><td>${formatCurrency(paid)}</td><td><strong>${formatCurrency(outstanding)}</strong></td><td>${getNumberFromValue(loan.interestRate)}%</td><td>${loan.date ? formatDate(loan.date) : '-'}</td><td><span class="badge ${loan.status === 'Closed' ? 'badge-success' : loan.status === 'Voided' ? 'badge-danger' : 'badge-warning'}">${escapeHtml(loan.status || 'Active')}</span></td><td class="text-right"><button class="btn-secondary btn-sm loan-edit" data-id="${loan.id}">Edit</button> <button class="btn-secondary btn-sm loan-history" data-id="${loan.id}">History</button> <button class="btn-danger btn-sm loan-delete" data-id="${loan.id}">Delete</button></td></tr>`;
+  }).join("") : `<tr><td colspan="9" class="text-center">No manager loans recorded yet.</td></tr>`;
+  tbody.querySelectorAll(".loan-edit").forEach((btn) => btn.addEventListener("click", () => loadRecordForEdit(KEYS.managerLoans, btn.dataset.id)));
+  tbody.querySelectorAll(".loan-history").forEach((btn) => btn.addEventListener("click", () => openLoanHistoryModal(btn.dataset.id)));
+  tbody.querySelectorAll(".loan-delete").forEach((btn) => btn.addEventListener("click", () => deleteRecord(KEYS.managerLoans, btn.dataset.id)));
+}
+
+function renderLoanRepaymentsTable() {
+  const tbody = document.getElementById("loan-repayments-table-body");
+  if (!tbody) return;
+  const repayments = getStoredRecords(KEYS.loanRepayments);
+  tbody.innerHTML = repayments.length ? repayments.map((repayment) => {
+    const loan = getLoanById(repayment.loanId);
+    return `<tr><td>${repayment.date ? formatDate(repayment.date) : '-'}</td><td>${escapeHtml(repayment.loanLabel || loan?.lender || repayment.loanId || '-')}</td><td><strong>${formatCurrency(repayment.amount)}</strong></td><td>${escapeHtml(repayment.paymentMode || '')}</td><td>${escapeHtml(repayment.notes || '')}</td><td class="text-right"><button class="btn-secondary btn-sm repayment-edit" data-id="${repayment.id}">Edit</button> <button class="btn-danger btn-sm repayment-delete" data-id="${repayment.id}">Delete</button></td></tr>`;
+  }).join("") : `<tr><td colspan="6" class="text-center">No loan repayments yet.</td></tr>`;
+  tbody.querySelectorAll(".repayment-edit").forEach((btn) => btn.addEventListener("click", () => loadRecordForEdit(KEYS.loanRepayments, btn.dataset.id)));
+  tbody.querySelectorAll(".repayment-delete").forEach((btn) => btn.addEventListener("click", () => deleteRecord(KEYS.loanRepayments, btn.dataset.id)));
+}
+
+function openLoanHistoryModal(loanId) {
+  const loan = getLoanById(loanId);
+  if (!loan) return;
+  const rows = getLoanRepayments(loanId);
+  document.getElementById("loan-history-title").textContent = `${loan.lender} Loan History`;
+  const table = document.getElementById("loan-history-table");
+  if (table) {
+    table.innerHTML = `<table><thead><tr><th>Date</th><th>Amount</th><th>Mode</th><th>Notes</th></tr></thead><tbody>${rows.length ? rows.map((row) => `<tr><td>${row.date ? formatDate(row.date) : '-'}</td><td>${formatCurrency(row.amount)}</td><td>${escapeHtml(row.paymentMode || '')}</td><td>${escapeHtml(row.notes || '')}</td></tr>`).join("") : `<tr><td colspan="4" class="text-center">No repayments for this loan.</td></tr>`}</tbody></table><div class="card-footer">Outstanding: ${formatCurrency(getLoanOutstanding(loanId))}</div>`;
+  }
+  document.getElementById("loan-history-modal").hidden = false;
+  document.body.style.overflow = "hidden";
+}
+
+function closeLoanHistoryModal() {
+  const modal = document.getElementById("loan-history-modal");
+  if (modal) modal.hidden = true;
+  document.body.style.overflow = "";
+}
 
 
 function initEmployeeSalaryUi() {
@@ -3794,6 +3902,63 @@ function initWritableFormListeners() {
   });
 
 
+  setupFirestoreForm({
+    formId: "manager-loan-form",
+    key: KEYS.managerLoans,
+    submitButtonId: "manager-loan-submit-btn",
+    validate: (data) => data.lender && data.purpose && data.principalAmount > 0 && data.date,
+    getData: () => ({
+      lender: getValue("loan-lender"),
+      contact: getValue("loan-contact"),
+      purpose: getValue("loan-purpose"),
+      principalAmount: getNumber("loan-principal"),
+      date: getValue("loan-date"),
+      interestRate: getNumber("loan-interest"),
+      status: getValue("loan-status"),
+      notes: getValue("loan-notes")
+    }),
+    populate: populateManagerLoan,
+    afterSave: async () => refreshLoanRepaymentOptions(),
+    beforeDelete: async (record) => {
+      const operations = [];
+      getLoanRepayments(record.id).forEach((repayment) => {
+        addLinkedLedgerDeleteOperations(operations, repayment.id);
+        addLinkedRecordsDeleteOperations(operations, KEYS.ledgerEntries, repayment.id);
+        operations.push({ type: "delete", collectionName: COLLECTIONS.loanRepayments, id: repayment.id });
+      });
+      addLinkedRecordsDeleteOperations(operations, KEYS.ledgerEntries, record.id);
+      if (operations.length) await commitBatchOperations(operations);
+    }
+  });
+
+  setupFirestoreForm({
+    formId: "loan-repayment-form",
+    key: KEYS.loanRepayments,
+    submitButtonId: "loan-repayment-submit-btn",
+    validate: (data) => data.loanId && data.amount > 0 && data.date,
+    getData: () => {
+      const loan = getLoanById(getValue("repayment-loan"));
+      return {
+        loanId: loan?.id || "",
+        loanLabel: loan ? `${loan.lender} - ${loan.purpose}` : "",
+        date: getValue("repayment-date"),
+        amount: getNumber("repayment-amount"),
+        paymentMode: getValue("repayment-mode"),
+        notes: getValue("repayment-notes")
+      };
+    },
+    populate: populateLoanRepayment,
+    afterSave: async (data, meta) => {
+      await reconcileLoanRepayment(data, meta);
+      await refreshLoanStatus(data.loanId, { repaymentId: meta.id, replacementAmount: data.amount });
+      refreshLoanRepaymentOptions();
+    },
+    beforeDelete: async (record) => {
+      await reconcileLoanRepayment(null, { isDelete: true, id: record.id, previous: record });
+      await refreshLoanStatus(record.loanId, { repaymentId: record.id, exclude: true });
+    }
+  });
+
 
   setupFirestoreForm({
     formId: "asset-form",
@@ -4389,6 +4554,69 @@ function addUnifiedLedgerCreateOperation(operations, data, meta) {
 }
 
 
+async function reconcileLoanRepayment(data, meta) {
+  const operations = [];
+  const sourceId = meta.id || meta.previous?.id;
+  addLinkedLedgerDeleteOperations(operations, sourceId);
+  addLinkedRecordsDeleteOperations(operations, KEYS.ledgerEntries, sourceId);
+  if (!meta.isDelete && data?.loanId && data.amount > 0) {
+    const loan = getLoanById(data.loanId);
+    operations.push({ type: "set", collectionName: COLLECTIONS.ledgerEntries, payload: {
+      sourceId,
+      date: data.date,
+      module: "Manager Loans",
+      account: "Loan Repayment",
+      type: "liability-payment",
+      debit: getNumberFromValue(data.amount),
+      credit: 0,
+      referenceCollection: COLLECTIONS.loanRepayments,
+      referenceId: sourceId,
+      description: `Loan repayment to ${loan?.lender || data.loanLabel || 'lender'}`,
+      status: "posted"
+    }});
+    addLinkedLedgerCreateOperation(operations, {
+      ...data,
+      mode: data.paymentMode,
+      date: data.date,
+      desc: `Loan repayment - ${loan?.lender || data.loanLabel || data.loanId}`,
+      status: "Paid"
+    }, {
+      id: sourceId,
+      moduleName: "Manager Loans",
+      amount: data.amount,
+      direction: "out",
+      reference: loan?.lender || data.loanLabel || data.loanId
+    });
+  }
+  if (operations.length) await commitBatchOperations(operations);
+}
+
+function getProjectedLoanOutstanding(loanId, options = {}) {
+  const loan = getLoanById(loanId);
+  if (!loan) return 0;
+  const paid = getStoredRecords(KEYS.loanRepayments)
+    .filter((repayment) => repayment.loanId === loanId && repayment.status !== "Voided")
+    .reduce((sum, repayment) => {
+      if (options.repaymentId && repayment.id === options.repaymentId) {
+        return options.exclude ? sum : sum + getNumberFromValue(options.replacementAmount);
+      }
+      return sum + getNumberFromValue(repayment.amount);
+    }, options.repaymentId && !getStoredRecords(KEYS.loanRepayments).some((repayment) => repayment.id === options.repaymentId) ? getNumberFromValue(options.replacementAmount) : 0);
+  return Math.max(getNumberFromValue(loan.principalAmount) - paid, 0);
+}
+
+async function refreshLoanStatus(loanId, options = {}) {
+  const loan = getLoanById(loanId);
+  if (!loan || loan.status === "Voided") return;
+  const outstanding = getProjectedLoanOutstanding(loanId, options);
+  const nextStatus = outstanding <= 0 ? "Closed" : "Active";
+  if (loan.status !== nextStatus) {
+    await updateCollectionRecord(COLLECTIONS.managerLoans, loanId, { status: nextStatus, outstandingBalance: outstanding });
+  } else {
+    await updateCollectionRecord(COLLECTIONS.managerLoans, loanId, { outstandingBalance: outstanding });
+  }
+}
+
 
 async function reconcileAssetLedger(data, meta) {
   const operations = [];
@@ -4934,6 +5162,15 @@ function getFormConfigForKey(key) {
       populate: populateAsset,
       beforeDelete: (record) => reconcileAssetLedger(null, { isDelete: true, id: record.id, previous: record })
     },
+    [KEYS.managerLoans]: {
+      submitButtonId: "manager-loan-submit-btn",
+      populate: populateManagerLoan
+    },
+    [KEYS.loanRepayments]: {
+      submitButtonId: "loan-repayment-submit-btn",
+      populate: populateLoanRepayment,
+      beforeDelete: (record) => reconcileLoanRepayment(null, { isDelete: true, id: record.id, previous: record })
+    },
     [KEYS.employees]: { submitButtonId: "employee-submit-btn", populate: populateEmployee },
     [KEYS.salaryPayments]: {
       submitButtonId: "salary-payment-submit-btn",
@@ -5113,6 +5350,27 @@ function populateProduction(record) {
 
 
 
+
+function populateManagerLoan(record) {
+  setValue("loan-lender", record.lender);
+  setValue("loan-contact", record.contact);
+  setValue("loan-purpose", record.purpose);
+  setValue("loan-principal", record.principalAmount);
+  setValue("loan-date", record.date);
+  setValue("loan-interest", record.interestRate);
+  setValue("loan-status", record.status);
+  setValue("loan-notes", record.notes);
+}
+
+function populateLoanRepayment(record) {
+  refreshLoanRepaymentOptions();
+  setValue("repayment-loan", record.loanId);
+  setValue("repayment-date", record.date);
+  setValue("repayment-amount", record.amount);
+  setValue("repayment-mode", record.paymentMode);
+  setValue("repayment-notes", record.notes);
+}
+
 function populateAsset(record) {
   setValue("asset-name", record.assetName);
   setValue("asset-type", record.type);
@@ -5178,6 +5436,7 @@ function activeSectionKey() {
     "company-finance": KEYS.dailyAccounts,
     employees: KEYS.employees,
     assets: KEYS.assets,
+    "manager-loans": KEYS.managerLoans,
     production: KEYS.production,
     "raw-materials": KEYS.rawMaterials,
     "investment-sharing": KEYS.sharing

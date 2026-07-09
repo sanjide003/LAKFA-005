@@ -82,6 +82,7 @@
             <a href="#" class="sidebar-item" data-section="company-finance"><span class="icon" data-icon="accounting"></span> Company Finance</a>
             <a href="#" class="sidebar-item" data-section="employees"><span class="icon" data-icon="users"></span> Employees & Salary</a>
             <a href="#" class="sidebar-item" data-section="assets"><span class="icon" data-icon="company"></span> Assets & Machinery</a>
+            <a href="#" class="sidebar-item" data-section="manager-loans"><span class="icon" data-icon="payment"></span> Manager Loans</a>
             <a href="#" class="sidebar-item" data-section="bankbook"><span class="icon" data-icon="bank"></span> Bank Accounts</a>
             <a href="#" class="sidebar-item" data-section="cashbook"><span class="icon" data-icon="cash"></span> Cash In Hand</a>
           </div>
@@ -1149,6 +1150,42 @@
         </section>
 
 
+
+        <!-- ================= MANAGER LOANS MODULE ================= -->
+        <section id="section-manager-loans" class="app-section">
+          <div class="section-header"><h2 class="section-title">Manager Loans & Repayments</h2></div>
+          <div class="dashboard-grid" id="manager-loan-summary-cards"></div>
+          <div class="module-layout">
+            <div class="card">
+              <div class="card-title">Loan Master</div>
+              <form id="manager-loan-form">
+                <div class="form-grid-2"><div class="form-group"><label>Lender</label><input type="text" id="loan-lender" class="form-control" required></div><div class="form-group"><label>Contact</label><input type="text" id="loan-contact" class="form-control"></div></div>
+                <div class="form-grid-2"><div class="form-group"><label>Purpose</label><input type="text" id="loan-purpose" class="form-control" required></div><div class="form-group"><label>Principal Amount ₹</label><input type="number" id="loan-principal" class="form-control" min="0.01" step="0.01" required></div></div>
+                <div class="form-grid-2"><div class="form-group"><label>Date</label><input type="date" id="loan-date" class="form-control" required></div><div class="form-group"><label>Interest Rate %</label><input type="number" id="loan-interest" class="form-control" min="0" step="0.01"></div></div>
+                <div class="form-grid-2"><div class="form-group"><label>Status</label><select id="loan-status" class="form-control"><option>Active</option><option>Closed</option><option>Voided</option></select></div><div class="form-group"><label>Notes</label><input type="text" id="loan-notes" class="form-control"></div></div>
+                <button type="submit" id="manager-loan-submit-btn" class="btn-primary submit-btn" style="width:100%;">Save Loan</button>
+              </form>
+            </div>
+            <div class="card">
+              <div class="card-title">Record Repayment</div>
+              <form id="loan-repayment-form">
+                <div class="form-group"><label>Loan</label><select id="repayment-loan" class="form-control" required></select></div>
+                <div class="form-grid-2"><div class="form-group"><label>Date</label><input type="date" id="repayment-date" class="form-control" required></div><div class="form-group"><label>Amount ₹</label><input type="number" id="repayment-amount" class="form-control" min="0.01" step="0.01" required></div></div>
+                <div class="form-grid-2"><div class="form-group"><label>Payment Mode</label><select id="repayment-mode" class="form-control"><option>Bank</option><option>Cash</option><option>UPI</option><option>Card</option></select></div><div class="form-group"><label>Notes</label><input type="text" id="repayment-notes" class="form-control"></div></div>
+                <button type="submit" id="loan-repayment-submit-btn" class="btn-primary submit-btn" style="width:100%;">Save Repayment</button>
+              </form>
+            </div>
+          </div>
+          <div class="table-responsive"><table><thead><tr><th>Lender</th><th>Purpose</th><th>Principal</th><th>Paid</th><th>Outstanding</th><th>Interest</th><th>Date</th><th>Status</th><th>Actions</th></tr></thead><tbody id="manager-loans-table-body"></tbody></table></div>
+          <div class="table-responsive"><table><thead><tr><th>Date</th><th>Loan</th><th>Amount</th><th>Mode</th><th>Notes</th><th>Actions</th></tr></thead><tbody id="loan-repayments-table-body"></tbody></table></div>
+        </section>
+        <div id="loan-history-modal" class="modal-overlay" hidden>
+          <div class="modal-card order-payment-modal-card">
+            <div class="modal-header"><h3 id="loan-history-title">Loan History</h3><button type="button" id="close-loan-history-modal-btn" class="icon-button" aria-label="Close loan history">×</button></div>
+            <div id="loan-history-table" class="table-responsive"></div>
+            <div class="modal-footer"><button type="button" id="cancel-loan-history-modal-btn" class="btn-secondary">Close</button></div>
+          </div>
+        </div>
 
         <!-- ================= ASSETS & MACHINERY MODULE ================= -->
         <section id="section-assets" class="app-section">
