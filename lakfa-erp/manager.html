@@ -1244,43 +1244,40 @@
 
         <!-- ================= INVESTMENT SHARING MODULE ================= -->
         <section id="section-investment-sharing" class="app-section">
-          <div class="section-header"><h2 class="section-title">Investment Profit Sharing Outlays</h2></div>
+          <div class="section-header"><h2 class="section-title">Profit Sharing Automation</h2></div>
           <div class="module-layout">
             <div class="card">
-              <div class="card-title">Distribute Profit Share</div>
+              <div class="card-title">Calculate & Save Distribution</div>
               <form id="sharing-form">
                 <div class="form-grid-2">
-                  <div class="form-group"><label>Payout Period</label><input type="text" id="shr-period" class="form-control" required placeholder="e.g. July 2026"></div>
-                  <div class="form-group"><label>Total Distributed Company Profit (₹)</label><input type="number" id="shr-profit" class="form-control" step="0.01" required></div>
+                  <div class="form-group"><label>From Date</label><input type="date" id="shr-from-date" class="form-control" required></div>
+                  <div class="form-group"><label>To Date</label><input type="date" id="shr-to-date" class="form-control" required></div>
                 </div>
                 <div class="form-grid-2">
-                  <div class="form-group"><label>Investor Name</label><input type="text" id="shr-investor" class="form-control" placeholder="Type exact name" required></div>
-                  <div class="form-group"><label>Investor Share %</label><input type="number" id="shr-percentage" class="form-control" step="0.01" required placeholder="15"></div>
+                  <div class="form-group"><label>Reserve Amount ₹</label><input type="number" id="shr-reserve-amount" class="form-control" min="0" step="0.01" value="0"></div>
+                  <div class="form-group"><label>Reserve Percentage %</label><input type="number" id="shr-reserve-percentage" class="form-control" min="0" max="100" step="0.01" value="0"></div>
                 </div>
-                <div class="form-group"><label>Profit Share Amount Payable (₹ - Auto)</label><input type="number" id="shr-amount" class="form-control" readonly style="background-color: #f1f5f9;"></div>
                 <div class="form-grid-2">
-                  <div class="form-group">
-                    <label>Payment Status</label>
-                    <select id="shr-status" class="form-control">
-                      <option>Paid</option><option>Pending</option><option>Partial</option>
-                    </select>
-                  </div>
-                  <div class="form-group"><label>Payment Date</label><input type="date" id="shr-date" class="form-control"></div>
+                  <div class="form-group"><label>Payment Status</label><select id="shr-status" class="form-control"><option>Pending</option><option>Paid</option><option>Partial</option></select></div>
+                  <div class="form-group"><label>Distribution Date</label><input type="date" id="shr-date" class="form-control"></div>
                 </div>
                 <div class="form-group"><label>Reference Remarks</label><input type="text" id="shr-notes" class="form-control"></div>
-                <button type="submit" id="sharing-submit-btn" class="btn-primary submit-btn" style="width: 100%;">Save Record</button>
+                <div class="form-grid-2">
+                  <button type="button" id="profit-preview-btn" class="btn-secondary">Calculate Preview</button>
+                  <button type="submit" id="sharing-submit-btn" class="btn-primary submit-btn">Save Distribution</button>
+                </div>
               </form>
             </div>
-            <div class="table-responsive">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Period</th><th>Company Profit</th><th>Investor Name</th><th>Share %</th><th>Payout Amount</th><th>Status</th><th>Payment Date</th><th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody id="sharing-table-body"></tbody>
-              </table>
+            <div class="card">
+              <div class="card-title">Distribution Preview</div>
+              <div id="profit-sharing-preview" class="table-responsive" style="margin-bottom:0;"><table><tbody><tr><td class="text-center">Calculate preview to see investor-wise payout.</td></tr></tbody></table></div>
             </div>
+          </div>
+          <div class="table-responsive">
+            <table>
+              <thead><tr><th>Period</th><th>Net Profit</th><th>Reserve</th><th>Distributable</th><th>Investors</th><th>Status</th><th>Date</th><th>Actions</th></tr></thead>
+              <tbody id="sharing-table-body"></tbody>
+            </table>
           </div>
         </section>
 

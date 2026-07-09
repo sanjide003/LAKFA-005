@@ -28,6 +28,8 @@ const KEYS = {
   investorExpenses: "lakfa_investor_expenses",
   investorPaymentRequests: "lakfa_investor_payment_requests",
   notifications: "lakfa_notifications",
+  profitDistributions: "lakfa_profit_distributions",
+  auditLogs: "lakfa_audit_logs",
   financeAccounts: "lakfa_finance_accounts",
   financeCategories: "lakfa_finance_categories",
   financeTransfers: "lakfa_finance_transfers",
@@ -60,7 +62,7 @@ const WRITABLE_KEYS = new Set([
   KEYS.purchases, KEYS.inventory, KEYS.rawMaterials, KEYS.sales, KEYS.orders, KEYS.delivery,
   KEYS.expenses, KEYS.income, KEYS.cashBook, KEYS.bankBook, KEYS.production, KEYS.sharing,
   KEYS.financeAccounts, KEYS.financeCategories, KEYS.financeTransfers, KEYS.dailyAccounts,
-  KEYS.investorExpenses, KEYS.investorPaymentRequests, KEYS.notifications
+  KEYS.investorExpenses, KEYS.investorPaymentRequests, KEYS.notifications, KEYS.profitDistributions, KEYS.auditLogs
 ]);
 
 const COLLECTION_BY_KEY = {
@@ -90,7 +92,9 @@ const COLLECTION_BY_KEY = {
   [KEYS.investorExpenses]: COLLECTIONS.investorExpenses,
   [KEYS.investorPaymentRequests]: COLLECTIONS.investorPaymentRequests,
   [KEYS.notifications]: COLLECTIONS.notifications,
-  [KEYS.sharing]: COLLECTIONS.sharing
+  [KEYS.profitDistributions]: COLLECTIONS.profitDistributions,
+  [KEYS.auditLogs]: COLLECTIONS.auditLogs,
+  [KEYS.sharing]: COLLECTIONS.profitDistributions
 };
 
 function getStoredRecords(key) {
@@ -121,6 +125,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   initSupplierPurchaseUi();
   initCompanyFinanceUi();
   initInvestorRequestUi();
+  initProfitSharingAutomationUi();
 
   // 6. Initialize report export actions
   initReportExportActions();
@@ -579,7 +584,7 @@ function renderModule(sectionId) {
       renderExpenseApprovalsDashboard();
       break;
     case "investment-sharing":
-      renderTable(KEYS.sharing, "sharing-table-body");
+      renderProfitDistributionsTable();
       break;
     case "reports":
       renderAdvancedReports();
@@ -808,13 +813,14 @@ function renderTable(key, tableBodyId) {
         <td><span class="badge ${row.status === 'Active' ? 'badge-success' : 'badge-danger'}">${row.status}</span></td>
       `;
     } else if (key === KEYS.sharing) {
+      const investorSummary = (row.investorShares || []).map((share) => `${share.investorName}: ${formatCurrency(share.amount)}`).join("<br>") || row.investor || "-";
       cellsHTML = `
-        <td><strong>${row.period}</strong></td>
-        <td>${formatCurrency(row.totalProfit)}</td>
-        <td><strong>${row.investor}</strong></td>
-        <td>${row.share}%</td>
-        <td><strong>${formatCurrency(row.amount)}</strong></td>
-        <td><span class="badge ${row.status === 'Paid' ? 'badge-success' : 'badge-warning'}">${row.status}</span></td>
+        <td><strong>${row.period || `${row.fromDate || ''} - ${row.toDate || ''}`}</strong></td>
+        <td>${formatCurrency(row.netProfit ?? row.totalProfit)}</td>
+        <td>${formatCurrency(row.reserveAmount)}</td>
+        <td><strong>${formatCurrency(row.distributableProfit ?? row.amount)}</strong></td>
+        <td>${investorSummary}</td>
+        <td><span class="badge ${row.status === 'Voided' ? 'badge-danger' : row.status === 'Paid' ? 'badge-success' : 'badge-warning'}">${row.status}</span></td>
         <td>${row.date ? formatDate(row.date) : '-'}</td>
       `;
     }
@@ -832,6 +838,9 @@ function renderTable(key, tableBodyId) {
         ? `<button class="btn-primary btn-sm supplier-pay-btn" style="padding: 0.25rem 0.5rem; margin-right: 4px;">Pay</button>
            <button class="btn-secondary btn-sm supplier-statement-btn" style="padding: 0.25rem 0.5rem; margin-right: 4px;">Statement</button>`
         : "";
+      const profitVoidButton = key === KEYS.sharing && row.status !== "Voided"
+        ? `<button class="btn-danger btn-sm profit-void-btn" style="padding: 0.25rem 0.5rem; margin-right: 4px;">Void</button>`
+        : "";
       const purchaseVoidButton = key === KEYS.purchases && row.status !== "Voided"
         ? `<button class="btn-danger btn-sm purchase-void-btn" style="padding: 0.25rem 0.5rem; margin-right: 4px;">Void</button>`
         : "";
@@ -841,6 +850,7 @@ function renderTable(key, tableBodyId) {
           ${documentButtons}
           ${notificationButtons}
           ${supplierPayButton}
+          ${profitVoidButton}
           ${purchaseVoidButton}
           <button class="btn-secondary btn-sm edit-btn" style="padding: 0.25rem 0.5rem; margin-right: 4px;">Edit</button>
           <button class="btn-danger btn-sm delete-btn" style="padding: 0.25rem 0.5rem;">Delete</button>
@@ -851,6 +861,7 @@ function renderTable(key, tableBodyId) {
       tr.querySelector(".supplier-pay-btn")?.addEventListener("click", () => openSupplierPaymentModal(row.id));
       tr.querySelector(".supplier-statement-btn")?.addEventListener("click", () => openSupplierStatementModal(row.id));
       tr.querySelector(".purchase-void-btn")?.addEventListener("click", () => voidPurchase(row.id));
+      tr.querySelector(".profit-void-btn")?.addEventListener("click", () => voidProfitDistribution(row.id));
       tr.querySelector(".print-doc-btn")?.addEventListener("click", () => printDocument(key, row.id));
       tr.querySelector(".download-doc-btn")?.addEventListener("click", () => downloadDocumentHtml(key, row.id));
       tr.querySelector(".copy-notification-btn")?.addEventListener("click", () => copyNotificationMessage(key, row.id));
@@ -1653,6 +1664,113 @@ async function submitSupplierPayment(event) {
   await refreshActiveData();
 }
 
+
+
+
+
+let currentProfitDistributionPreview = null;
+
+function initProfitSharingAutomationUi() {
+  document.getElementById("profit-preview-btn")?.addEventListener("click", () => {
+    currentProfitDistributionPreview = calculateProfitDistributionPreview();
+    renderProfitSharingPreview(currentProfitDistributionPreview);
+  });
+}
+
+function isWithinDateRange(row, fromDate, toDate) {
+  const date = String(row.date || row.createdAt || "").slice(0, 10);
+  if (!date) return false;
+  return (!fromDate || date >= fromDate) && (!toDate || date <= toDate);
+}
+
+function sumByDate(records, fromDate, toDate, amountGetter) {
+  return records.filter((row) => isWithinDateRange(row, fromDate, toDate) && row.status !== "Voided").reduce((sum, row) => sum + getNumberFromValue(amountGetter(row)), 0);
+}
+
+function calculateProfitDistributionPreview() {
+  const fromDate = getValue("shr-from-date");
+  const toDate = getValue("shr-to-date");
+  const salesIncome = sumByDate(getStoredRecords(KEYS.sales), fromDate, toDate, (row) => row.finalAmount || row.totalAmount);
+  const otherIncome = sumByDate(getStoredRecords(KEYS.income), fromDate, toDate, (row) => row.amount);
+  const dailyIncome = sumByDate(getStoredRecords(KEYS.dailyAccounts), fromDate, toDate, (row) => row.type === "Income" ? row.amount : 0);
+  const purchaseCost = sumByDate(getStoredRecords(KEYS.purchases), fromDate, toDate, (row) => row.totalAmount);
+  const operatingExpense = sumByDate(getStoredRecords(KEYS.expenses), fromDate, toDate, (row) => row.amount);
+  const dailyExpense = sumByDate(getStoredRecords(KEYS.dailyAccounts), fromDate, toDate, (row) => row.type === "Expense" ? row.amount : 0);
+  const grossIncome = salesIncome + otherIncome + dailyIncome;
+  const totalExpense = purchaseCost + operatingExpense + dailyExpense;
+  const netProfit = Math.max(grossIncome - totalExpense, 0);
+  const reservePercentage = getNumber("shr-reserve-percentage");
+  const reserveAmount = Math.min(netProfit, getNumber("shr-reserve-amount") + ((netProfit * reservePercentage) / 100));
+  const distributableProfit = Math.max(netProfit - reserveAmount, 0);
+  const investors = getStoredRecords(KEYS.investors).filter((investor) => investor.status !== "Inactive" && getNumberFromValue(investor.share) > 0);
+  const investorShares = investors.map((investor) => ({
+    investorId: investor.id,
+    investorName: investor.name,
+    investorEmail: investor.email || "",
+    sharePercentage: getNumberFromValue(investor.share),
+    amount: (distributableProfit * getNumberFromValue(investor.share)) / 100
+  })).filter((row) => row.amount > 0);
+  return {
+    fromDate,
+    toDate,
+    period: `${fromDate || "Start"} to ${toDate || "End"}`,
+    salesIncome,
+    otherIncome,
+    dailyIncome,
+    grossIncome,
+    purchaseCost,
+    operatingExpense,
+    dailyExpense,
+    totalExpense,
+    netProfit,
+    reservePercentage,
+    reserveAmount,
+    distributableProfit,
+    investorShares,
+    status: getValue("shr-status") || "Pending",
+    date: getValue("shr-date") || new Date().toISOString().slice(0, 10),
+    notes: getValue("shr-notes")
+  };
+}
+
+function renderProfitSharingPreview(preview) {
+  const container = document.getElementById("profit-sharing-preview");
+  if (!container || !preview) return;
+  const rows = preview.investorShares.map((share) => `<tr><td>${escapeHtml(share.investorName)}</td><td>${share.sharePercentage}%</td><td><strong>${formatCurrency(share.amount)}</strong></td></tr>`).join("");
+  container.innerHTML = `
+    <table>
+      <tbody>
+        <tr><td>Gross Income</td><td>${formatCurrency(preview.grossIncome)}</td></tr>
+        <tr><td>Total Expense</td><td>${formatCurrency(preview.totalExpense)}</td></tr>
+        <tr><td>Net Profit</td><td><strong>${formatCurrency(preview.netProfit)}</strong></td></tr>
+        <tr><td>Reserve</td><td>${formatCurrency(preview.reserveAmount)}</td></tr>
+        <tr><td>Distributable Profit</td><td><strong>${formatCurrency(preview.distributableProfit)}</strong></td></tr>
+      </tbody>
+    </table>
+    <table><thead><tr><th>Investor</th><th>Share %</th><th>Distribution</th></tr></thead><tbody>${rows || `<tr><td colspan="3" class="text-center">No active investor shares configured.</td></tr>`}</tbody></table>
+  `;
+}
+
+function getProfitDistributionFormData() {
+  const preview = calculateProfitDistributionPreview();
+  currentProfitDistributionPreview = preview;
+  renderProfitSharingPreview(preview);
+  return preview;
+}
+
+function renderProfitDistributionsTable() {
+  renderTable(KEYS.sharing, "sharing-table-body");
+}
+
+async function voidProfitDistribution(id) {
+  const distribution = getStoredRecords(KEYS.sharing).find((row) => row.id === id);
+  if (!distribution || distribution.status === "Voided") return;
+  if (!confirm("Void this profit distribution and reverse linked investor entries/ledger?")) return;
+  await reconcileProfitSharingLedger({ ...distribution, status: "Voided" }, { id, previous: distribution, isVoid: true });
+  await updateCollectionRecord(COLLECTIONS.profitDistributions, id, { status: "Voided", voidedAt: new Date().toISOString() });
+  showToast("Profit distribution voided.", "success");
+  await refreshActiveData();
+}
 
 
 
@@ -3519,27 +3637,14 @@ function initWritableFormListeners() {
     formId: "sharing-form",
     key: KEYS.sharing,
     submitButtonId: "sharing-submit-btn",
-    validate: (data) => data.period && data.investor && data.share > 0 && data.totalProfit >= 0,
-    getData: () => {
-      const totalProfit = getNumber("shr-profit");
-      const share = getNumber("shr-percentage");
-      return {
-        period: getValue("shr-period"),
-        totalProfit,
-        investor: getValue("shr-investor"),
-        share,
-        amount: (totalProfit * share) / 100,
-        status: getValue("shr-status"),
-        date: getValue("shr-date"),
-        notes: getValue("shr-notes")
-      };
-    },
+    validate: (data) => data.fromDate && data.toDate && data.investorShares?.length > 0 && data.netProfit >= 0,
+    getData: getProfitDistributionFormData,
     populate: populateSharing,
     afterSave: async (data, meta) => {
       await reconcileProfitSharingLedger(data, meta);
     },
     beforeDelete: async (record) => {
-      await reconcileProfitSharingLedger(null, { isDelete: true, previous: record });
+      await reconcileProfitSharingLedger(null, { isDelete: true, id: record.id, previous: record });
     }
   });
 }
@@ -4053,17 +4158,65 @@ function addUnifiedLedgerCreateOperation(operations, data, meta) {
 
 async function reconcileProfitSharingLedger(data, meta) {
   const operations = [];
-  addLinkedLedgerDeleteOperations(operations, meta.id || meta.previous?.id);
-  if (!meta.isDelete && data) {
-    addLinkedLedgerCreateOperation(operations, data, {
-      ...meta,
-      moduleName: "Profit Sharing",
-      amount: data.amount,
-      direction: "out",
-      reference: `${data.period} - ${data.investor}`
+  const sourceId = meta.id || meta.previous?.id;
+  addLinkedLedgerDeleteOperations(operations, sourceId);
+  addLinkedRecordsDeleteOperations(operations, KEYS.ledgerEntries, sourceId);
+  addLinkedRecordsDeleteOperations(operations, KEYS.investorExpenses, sourceId);
+  addLinkedRecordsDeleteOperations(operations, KEYS.auditLogs, sourceId);
+  if (!meta.isDelete && !meta.isVoid && data?.status !== "Voided") {
+    (data.investorShares || []).forEach((share) => {
+      operations.push({ type: "set", collectionName: COLLECTIONS.investorExpenses, payload: {
+        sourceId,
+        investorId: share.investorId,
+        investorName: share.investorName,
+        investorEmail: share.investorEmail || "",
+        purpose: `Profit distribution ${data.period}`,
+        amount: share.amount,
+        notes: data.notes || "Auto-created from profit sharing distribution",
+        status: data.status === "Paid" ? "approved" : "pending",
+        date: data.date,
+        source: "profit-distribution"
+      }});
     });
+    operations.push({ type: "set", collectionName: COLLECTIONS.ledgerEntries, payload: {
+      sourceId,
+      date: data.date || new Date().toISOString().slice(0, 10),
+      module: "Profit Sharing",
+      account: "Investor Profit Distribution",
+      type: "expense",
+      debit: getNumberFromValue(data.distributableProfit),
+      credit: 0,
+      referenceCollection: COLLECTIONS.profitDistributions,
+      referenceId: sourceId,
+      description: `Profit distribution for ${data.period}`,
+      status: "posted"
+    }});
+    operations.push({ type: "set", collectionName: COLLECTIONS.auditLogs, payload: {
+      sourceId,
+      action: "profit_distribution_calculated",
+      module: "Profit Sharing",
+      recordId: sourceId,
+      summary: `Profit distribution ${data.period}: ${formatCurrency(data.distributableProfit)}`,
+      before: meta.previous || null,
+      after: data,
+      metadata: {
+        grossIncome: data.grossIncome,
+        totalExpense: data.totalExpense,
+        netProfit: data.netProfit,
+        reserveAmount: data.reserveAmount,
+        investorCount: data.investorShares?.length || 0
+      },
+      eventAt: new Date().toISOString()
+    }});
   }
   if (operations.length) await commitBatchOperations(operations);
+}
+
+function addLinkedRecordsDeleteOperations(operations, key, sourceId) {
+  if (!sourceId) return;
+  getStoredRecords(key)
+    .filter((record) => record.sourceId === sourceId)
+    .forEach((record) => operations.push({ type: "delete", collectionName: COLLECTION_BY_KEY[key], id: record.id }));
 }
 
 function addStockReversalOperations(operations, previous, moduleName) {
@@ -4477,7 +4630,7 @@ function getFormConfigForKey(key) {
     [KEYS.sharing]: {
       submitButtonId: "sharing-submit-btn",
       populate: populateSharing,
-      beforeDelete: (record) => reconcileProfitSharingLedger(null, { isDelete: true, previous: record })
+      beforeDelete: (record) => reconcileProfitSharingLedger(null, { isDelete: true, id: record.id, previous: record })
     }
   };
   return formMap[key];
@@ -4641,14 +4794,15 @@ function populateProduction(record) {
 }
 
 function populateSharing(record) {
-  setValue("shr-period", record.period);
-  setValue("shr-profit", record.totalProfit);
-  setValue("shr-investor", record.investor);
-  setValue("shr-percentage", record.share);
-  setValue("shr-amount", record.amount);
+  setValue("shr-from-date", record.fromDate);
+  setValue("shr-to-date", record.toDate);
+  setValue("shr-reserve-amount", record.reserveAmount);
+  setValue("shr-reserve-percentage", record.reservePercentage);
   setValue("shr-status", record.status);
   setValue("shr-date", record.date);
   setValue("shr-notes", record.notes);
+  currentProfitDistributionPreview = record;
+  renderProfitSharingPreview(record);
 }
 
 function activeSectionKey() {
