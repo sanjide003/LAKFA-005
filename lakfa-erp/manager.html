@@ -80,6 +80,7 @@
           <button class="sidebar-group-toggle" type="button"><span>Cash, Bank & Assets</span><span class="chevron">⌄</span></button>
           <div class="sidebar-submenu">
             <a href="#" class="sidebar-item" data-section="company-finance"><span class="icon" data-icon="accounting"></span> Company Finance</a>
+            <a href="#" class="sidebar-item" data-section="employees"><span class="icon" data-icon="users"></span> Employees & Salary</a>
             <a href="#" class="sidebar-item" data-section="bankbook"><span class="icon" data-icon="bank"></span> Bank Accounts</a>
             <a href="#" class="sidebar-item" data-section="cashbook"><span class="icon" data-icon="cash"></span> Cash In Hand</a>
           </div>
@@ -1145,6 +1146,43 @@
           <div class="table-responsive"><table><thead><tr><th>Date</th><th>Type</th><th>Account</th><th>Category</th><th>Description</th><th>Amount</th><th>Status</th><th>Actions</th></tr></thead><tbody id="daily-accounts-table-body"></tbody></table></div>
           <div class="table-responsive"><table><thead><tr><th>Date</th><th>From</th><th>To</th><th>Amount</th><th>Reference</th><th>Status</th><th>Actions</th></tr></thead><tbody id="finance-transfers-table-body"></tbody></table></div>
         </section>
+
+
+        <!-- ================= EMPLOYEES & SALARY MODULE ================= -->
+        <section id="section-employees" class="app-section">
+          <div class="section-header"><h2 class="section-title">Employees & Salary</h2></div>
+          <div class="module-layout">
+            <div class="card">
+              <div class="card-title">Employee Master</div>
+              <form id="employee-form">
+                <div class="form-grid-2"><div class="form-group"><label>Name</label><input type="text" id="emp-name" class="form-control" required></div><div class="form-group"><label>Phone</label><input type="tel" id="emp-phone" class="form-control" required></div></div>
+                <div class="form-grid-2"><div class="form-group"><label>Role</label><input type="text" id="emp-role" class="form-control" required></div><div class="form-group"><label>Status</label><select id="emp-status" class="form-control"><option>Active</option><option>Inactive</option></select></div></div>
+                <div class="form-grid-2"><div class="form-group"><label>Salary Type</label><select id="emp-salary-type" class="form-control"><option>Monthly</option><option>Daily</option><option>Hourly</option><option>Contract</option></select></div><div class="form-group"><label>Salary Rate ₹</label><input type="number" id="emp-salary-rate" class="form-control" min="0" step="0.01" required></div></div>
+                <div class="form-grid-2"><div class="form-group"><label>Joining Date</label><input type="date" id="emp-joining-date" class="form-control" required></div><div class="form-group"><label>Notes</label><input type="text" id="emp-notes" class="form-control"></div></div>
+                <button type="submit" id="employee-submit-btn" class="btn-primary submit-btn" style="width:100%;">Save Employee</button>
+              </form>
+            </div>
+            <div class="card">
+              <div class="card-title">Record Salary Payment</div>
+              <form id="salary-payment-form">
+                <div class="form-group"><label>Employee</label><select id="salary-employee" class="form-control" required></select></div>
+                <div class="form-grid-2"><div class="form-group"><label>Period</label><input type="text" id="salary-period" class="form-control" placeholder="July 2026" required></div><div class="form-group"><label>Amount ₹</label><input type="number" id="salary-amount" class="form-control" min="0.01" step="0.01" required></div></div>
+                <div class="form-grid-2"><div class="form-group"><label>Payment Mode</label><select id="salary-mode" class="form-control"><option>Bank</option><option>Cash</option><option>UPI</option><option>Card</option></select></div><div class="form-group"><label>Payment Date</label><input type="date" id="salary-date" class="form-control" required></div></div>
+                <div class="form-grid-2"><div class="form-group"><label>Status</label><select id="salary-status" class="form-control"><option>Paid</option><option>Pending</option><option>Partial</option></select></div><div class="form-group"><label>Notes</label><input type="text" id="salary-notes" class="form-control"></div></div>
+                <button type="submit" id="salary-payment-submit-btn" class="btn-primary submit-btn" style="width:100%;">Save Salary Payment</button>
+              </form>
+            </div>
+          </div>
+          <div class="table-responsive"><table><thead><tr><th>Employee</th><th>Role</th><th>Salary</th><th>Joining</th><th>Status</th><th>Notes</th><th>Actions</th></tr></thead><tbody id="employees-table-body"></tbody></table></div>
+          <div class="table-responsive"><table><thead><tr><th>Date</th><th>Employee</th><th>Period</th><th>Amount</th><th>Mode</th><th>Status</th><th>Notes</th><th>Actions</th></tr></thead><tbody id="salary-payments-table-body"></tbody></table></div>
+        </section>
+        <div id="salary-history-modal" class="modal-overlay" hidden>
+          <div class="modal-card order-payment-modal-card">
+            <div class="modal-header"><h3 id="salary-history-title">Salary History</h3><button type="button" id="close-salary-history-modal-btn" class="icon-button" aria-label="Close salary history">×</button></div>
+            <div id="salary-history-table" class="table-responsive"></div>
+            <div class="modal-footer"><button type="button" id="cancel-salary-history-modal-btn" class="btn-secondary">Close</button></div>
+          </div>
+        </div>
 
         <!-- ================= ACCOUNTING MODULE ================= -->
         <section id="section-accounting" class="app-section">

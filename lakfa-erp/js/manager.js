@@ -30,6 +30,8 @@ const KEYS = {
   notifications: "lakfa_notifications",
   profitDistributions: "lakfa_profit_distributions",
   auditLogs: "lakfa_audit_logs",
+  employees: "lakfa_employees",
+  salaryPayments: "lakfa_salary_payments",
   financeAccounts: "lakfa_finance_accounts",
   financeCategories: "lakfa_finance_categories",
   financeTransfers: "lakfa_finance_transfers",
@@ -55,14 +57,16 @@ const WRITABLE_FORM_IDS = new Set([
   "product-form", "customer-form", "supplier-form", "investors-form",
   "purchase-form", "inventory-form", "raw-material-form", "sales-form", "orders-form", "delivery-form",
   "expenses-form", "income-form", "cashbook-form", "bankbook-form", "production-form", "sharing-form",
-  "finance-account-form", "finance-category-form", "finance-transfer-form", "daily-account-form", "payment-request-form"
+  "finance-account-form", "finance-category-form", "finance-transfer-form", "daily-account-form", "payment-request-form",
+  "employee-form", "salary-payment-form"
 ]);
 const WRITABLE_KEYS = new Set([
   KEYS.products, KEYS.customers, KEYS.suppliers, KEYS.investors,
   KEYS.purchases, KEYS.inventory, KEYS.rawMaterials, KEYS.sales, KEYS.orders, KEYS.delivery,
   KEYS.expenses, KEYS.income, KEYS.cashBook, KEYS.bankBook, KEYS.production, KEYS.sharing,
   KEYS.financeAccounts, KEYS.financeCategories, KEYS.financeTransfers, KEYS.dailyAccounts,
-  KEYS.investorExpenses, KEYS.investorPaymentRequests, KEYS.notifications, KEYS.profitDistributions, KEYS.auditLogs
+  KEYS.investorExpenses, KEYS.investorPaymentRequests, KEYS.notifications, KEYS.profitDistributions, KEYS.auditLogs,
+  KEYS.employees, KEYS.salaryPayments
 ]);
 
 const COLLECTION_BY_KEY = {
@@ -94,6 +98,8 @@ const COLLECTION_BY_KEY = {
   [KEYS.notifications]: COLLECTIONS.notifications,
   [KEYS.profitDistributions]: COLLECTIONS.profitDistributions,
   [KEYS.auditLogs]: COLLECTIONS.auditLogs,
+  [KEYS.employees]: COLLECTIONS.employees,
+  [KEYS.salaryPayments]: COLLECTIONS.salaryPayments,
   [KEYS.sharing]: COLLECTIONS.profitDistributions
 };
 
@@ -126,6 +132,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   initCompanyFinanceUi();
   initInvestorRequestUi();
   initProfitSharingAutomationUi();
+  initEmployeeSalaryUi();
 
   // 6. Initialize report export actions
   initReportExportActions();
@@ -569,6 +576,9 @@ function renderModule(sectionId) {
       break;
     case "company-finance":
       renderCompanyFinanceDashboard();
+      break;
+    case "employees":
+      renderEmployeesSalaryDashboard();
       break;
     case "accounting":
       renderAccountingSummary();
@@ -1668,6 +1678,90 @@ async function submitSupplierPayment(event) {
 
 
 
+
+function initEmployeeSalaryUi() {
+  ["close-salary-history-modal-btn", "cancel-salary-history-modal-btn"].forEach((id) => document.getElementById(id)?.addEventListener("click", closeSalaryHistoryModal));
+  document.getElementById("salary-history-modal")?.addEventListener("click", (event) => {
+    if (event.target.id === "salary-history-modal") closeSalaryHistoryModal();
+  });
+  refreshSalaryEmployeeOptions();
+}
+
+function refreshSalaryEmployeeOptions() {
+  const select = document.getElementById("salary-employee");
+  if (!select) return;
+  const current = select.value;
+  select.innerHTML = `<option value="">Select employee</option>` + getStoredRecords(KEYS.employees)
+    .filter((employee) => employee.status !== "Inactive")
+    .map((employee) => `<option value="${escapeHtml(employee.id)}">${escapeHtml(employee.name)} - ${escapeHtml(employee.role || '')}</option>`).join("");
+  select.value = current;
+}
+
+function getEmployeeById(id) {
+  return getStoredRecords(KEYS.employees).find((employee) => employee.id === id);
+}
+
+function renderEmployeesSalaryDashboard() {
+  refreshSalaryEmployeeOptions();
+  renderEmployeesTable();
+  renderSalaryPaymentsTable();
+}
+
+function renderEmployeesTable() {
+  const tbody = document.getElementById("employees-table-body");
+  if (!tbody) return;
+  const employees = getStoredRecords(KEYS.employees);
+  tbody.innerHTML = employees.length ? employees.map((employee) => `
+    <tr><td><strong>${escapeHtml(employee.name)}</strong><br><small>${escapeHtml(employee.phone || '')}</small></td><td>${escapeHtml(employee.role || '')}</td><td>${escapeHtml(employee.salaryType || '')}<br><strong>${formatCurrency(employee.salaryRate)}</strong></td><td>${employee.joiningDate ? formatDate(employee.joiningDate) : '-'}</td><td><span class="badge ${employee.status === 'Active' ? 'badge-success' : 'badge-danger'}">${escapeHtml(employee.status || 'Active')}</span></td><td>${escapeHtml(employee.notes || '')}</td><td class="text-right"><button class="btn-secondary btn-sm employee-edit" data-id="${employee.id}">Edit</button> <button class="btn-secondary btn-sm employee-history" data-id="${employee.id}">History</button> <button class="btn-danger btn-sm employee-delete" data-id="${employee.id}">Delete</button></td></tr>
+  `).join("") : `<tr><td colspan="7" class="text-center">No employees yet.</td></tr>`;
+  tbody.querySelectorAll(".employee-edit").forEach((btn) => btn.addEventListener("click", () => loadRecordForEdit(KEYS.employees, btn.dataset.id)));
+  tbody.querySelectorAll(".employee-history").forEach((btn) => btn.addEventListener("click", () => openSalaryHistoryModal(btn.dataset.id)));
+  tbody.querySelectorAll(".employee-delete").forEach((btn) => btn.addEventListener("click", () => deleteRecord(KEYS.employees, btn.dataset.id)));
+}
+
+function renderSalaryPaymentsTable() {
+  const tbody = document.getElementById("salary-payments-table-body");
+  if (!tbody) return;
+  const payments = getStoredRecords(KEYS.salaryPayments);
+  tbody.innerHTML = payments.length ? payments.map((payment) => `
+    <tr><td>${payment.paymentDate ? formatDate(payment.paymentDate) : '-'}</td><td>${escapeHtml(payment.employeeName || getEmployeeById(payment.employeeId)?.name || '-')}</td><td>${escapeHtml(payment.period || '')}</td><td><strong>${formatCurrency(payment.amount)}</strong></td><td>${escapeHtml(payment.paymentMode || '')}</td><td><span class="badge ${payment.status === 'Voided' ? 'badge-danger' : payment.status === 'Paid' ? 'badge-success' : 'badge-warning'}">${escapeHtml(payment.status || 'Paid')}</span></td><td>${escapeHtml(payment.notes || '')}</td><td class="text-right"><button class="btn-secondary btn-sm salary-edit" data-id="${payment.id}">Edit</button> ${payment.status !== 'Voided' ? `<button class="btn-danger btn-sm salary-void" data-id="${payment.id}">Void</button>` : ''} <button class="btn-danger btn-sm salary-delete" data-id="${payment.id}">Delete</button></td></tr>
+  `).join("") : `<tr><td colspan="8" class="text-center">No salary payments yet.</td></tr>`;
+  tbody.querySelectorAll(".salary-edit").forEach((btn) => btn.addEventListener("click", () => loadRecordForEdit(KEYS.salaryPayments, btn.dataset.id)));
+  tbody.querySelectorAll(".salary-void").forEach((btn) => btn.addEventListener("click", () => voidSalaryPayment(btn.dataset.id)));
+  tbody.querySelectorAll(".salary-delete").forEach((btn) => btn.addEventListener("click", () => deleteRecord(KEYS.salaryPayments, btn.dataset.id)));
+}
+
+function openSalaryHistoryModal(employeeId) {
+  const employee = getEmployeeById(employeeId);
+  if (!employee) return;
+  const rows = getStoredRecords(KEYS.salaryPayments).filter((payment) => payment.employeeId === employeeId);
+  document.getElementById("salary-history-title").textContent = `${employee.name} Salary History`;
+  const table = document.getElementById("salary-history-table");
+  if (table) {
+    table.innerHTML = `<table><thead><tr><th>Date</th><th>Period</th><th>Amount</th><th>Mode</th><th>Status</th><th>Notes</th></tr></thead><tbody>${rows.length ? rows.map((row) => `<tr><td>${row.paymentDate ? formatDate(row.paymentDate) : '-'}</td><td>${escapeHtml(row.period || '')}</td><td>${formatCurrency(row.amount)}</td><td>${escapeHtml(row.paymentMode || '')}</td><td>${escapeHtml(row.status || '')}</td><td>${escapeHtml(row.notes || '')}</td></tr>`).join("") : `<tr><td colspan="6" class="text-center">No salary payments for this employee.</td></tr>`}</tbody></table>`;
+  }
+  document.getElementById("salary-history-modal").hidden = false;
+  document.body.style.overflow = "hidden";
+}
+
+function closeSalaryHistoryModal() {
+  const modal = document.getElementById("salary-history-modal");
+  if (modal) modal.hidden = true;
+  document.body.style.overflow = "";
+}
+
+async function voidSalaryPayment(id) {
+  const payment = getStoredRecords(KEYS.salaryPayments).find((row) => row.id === id);
+  if (!payment || payment.status === "Voided") return;
+  if (!confirm("Void this salary payment and reverse expenses/ledger/cash-bank entries?")) return;
+  await reconcileSalaryPayment(null, { isDelete: true, id, previous: payment });
+  await updateCollectionRecord(COLLECTIONS.salaryPayments, id, { status: "Voided", voidedAt: new Date().toISOString() });
+  showToast("Salary payment voided.", "success");
+  await refreshActiveData();
+}
+
+
+
 let currentProfitDistributionPreview = null;
 
 function initProfitSharingAutomationUi() {
@@ -2346,6 +2440,7 @@ function getReportRows(reportType) {
   const inventory = getStoredRecords(KEYS.inventory);
   const investors = getStoredRecords(KEYS.investors);
   const sharing = getStoredRecords(KEYS.sharing);
+  const salaryPayments = getStoredRecords(KEYS.salaryPayments).filter((row) => row.status !== "Voided");
 
   if (reportType === "profitLoss") {
     return [
@@ -2353,7 +2448,8 @@ function getReportRows(reportType) {
       { metric: "Other Income", amount: sumRecords(income, "amount") },
       { metric: "Purchases", amount: sumRecords(purchases, "totalAmount") },
       { metric: "Expenses", amount: sumRecords(expenses, "amount") },
-      { metric: "Estimated Profit", amount: sumRecords(sales, "finalAmount") + sumRecords(income, "amount") - sumRecords(purchases, "totalAmount") - sumRecords(expenses, "amount") }
+      { metric: "Salary Expense", amount: sumRecords(salaryPayments, "amount") },
+      { metric: "Estimated Profit", amount: sumRecords(sales, "finalAmount") + sumRecords(income, "amount") - sumRecords(purchases, "totalAmount") - sumRecords(expenses, "amount") - sumRecords(salaryPayments, "amount") }
     ];
   }
 
@@ -2408,10 +2504,12 @@ function renderAdvancedReports() {
     const profit = getReportRows("profitLoss").find((row) => row.metric === "Estimated Profit")?.amount || 0;
     const stockValue = getReportRows("stock").reduce((sum, row) => sum + row.valuation, 0);
     const salesPurchase = getReportRows("salesPurchase");
-    cards.innerHTML = reportCard("Profit / Loss", formatCurrency(profit), "Sales + income - purchases - expenses")
+    const salaryTotal = getReportRows("profitLoss").find((row) => row.metric === "Salary Expense")?.amount || 0;
+    cards.innerHTML = reportCard("Profit / Loss", formatCurrency(profit), "Sales + income - purchases - expenses - salary")
       + reportCard("Stock Valuation", formatCurrency(stockValue), "Current stock × available cost")
       + reportCard("Sales Total", formatCurrency(salesPurchase.find((row) => row.metric === "Sales Total")?.value || 0), "Firestore sales summary")
-      + reportCard("Purchase Total", formatCurrency(salesPurchase.find((row) => row.metric === "Purchase Total")?.value || 0), "Firestore purchase summary");
+      + reportCard("Purchase Total", formatCurrency(salesPurchase.find((row) => row.metric === "Purchase Total")?.value || 0), "Firestore purchase summary")
+      + reportCard("Salary Expense", formatCurrency(salaryTotal), "Employee salary payments");
   }
   renderReportTable("advanced-report-table", "profitLoss");
 }
@@ -3633,6 +3731,53 @@ function initWritableFormListeners() {
     }
   });
 
+
+  setupFirestoreForm({
+    formId: "employee-form",
+    key: KEYS.employees,
+    submitButtonId: "employee-submit-btn",
+    validate: (data) => data.name && data.phone && data.role && data.salaryRate >= 0,
+    getData: () => ({
+      name: getValue("emp-name"),
+      phone: getValue("emp-phone"),
+      role: getValue("emp-role"),
+      salaryType: getValue("emp-salary-type"),
+      salaryRate: getNumber("emp-salary-rate"),
+      joiningDate: getValue("emp-joining-date"),
+      status: getValue("emp-status"),
+      notes: getValue("emp-notes")
+    }),
+    populate: populateEmployee,
+    afterSave: async () => refreshSalaryEmployeeOptions()
+  });
+
+  setupFirestoreForm({
+    formId: "salary-payment-form",
+    key: KEYS.salaryPayments,
+    submitButtonId: "salary-payment-submit-btn",
+    validate: (data) => data.employeeId && data.period && data.amount > 0 && data.paymentDate,
+    getData: () => {
+      const employee = getEmployeeById(getValue("salary-employee"));
+      return {
+        employeeId: employee?.id || "",
+        employeeName: employee?.name || "",
+        period: getValue("salary-period"),
+        amount: getNumber("salary-amount"),
+        paymentMode: getValue("salary-mode"),
+        paymentDate: getValue("salary-date"),
+        status: getValue("salary-status"),
+        notes: getValue("salary-notes")
+      };
+    },
+    populate: populateSalaryPayment,
+    afterSave: async (data, meta) => {
+      await reconcileSalaryPayment(data, meta);
+    },
+    beforeDelete: async (record) => {
+      await reconcileSalaryPayment(null, { isDelete: true, id: record.id, previous: record });
+    }
+  });
+
   setupFirestoreForm({
     formId: "sharing-form",
     key: KEYS.sharing,
@@ -4156,6 +4301,57 @@ function addUnifiedLedgerCreateOperation(operations, data, meta) {
   });
 }
 
+
+async function reconcileSalaryPayment(data, meta) {
+  const operations = [];
+  const sourceId = meta.id || meta.previous?.id;
+  addLinkedLedgerDeleteOperations(operations, sourceId);
+  addLinkedRecordsDeleteOperations(operations, KEYS.ledgerEntries, sourceId);
+  addLinkedRecordsDeleteOperations(operations, KEYS.expenses, sourceId);
+  if (!meta.isDelete && data?.status !== "Voided") {
+    operations.push({ type: "set", collectionName: COLLECTIONS.expenses, payload: {
+      sourceId,
+      date: data.paymentDate,
+      category: "Salary",
+      desc: `Salary payment - ${data.employeeName} (${data.period})`,
+      amount: data.amount,
+      mode: data.paymentMode,
+      paidTo: data.employeeName,
+      receipt: sourceId,
+      notes: data.notes,
+      status: data.status
+    }});
+    operations.push({ type: "set", collectionName: COLLECTIONS.ledgerEntries, payload: {
+      sourceId,
+      date: data.paymentDate,
+      module: "Employees & Salary",
+      account: "Salary Expense",
+      type: "expense",
+      debit: getNumberFromValue(data.amount),
+      credit: 0,
+      referenceCollection: COLLECTIONS.salaryPayments,
+      referenceId: sourceId,
+      description: `Salary ${data.period} paid to ${data.employeeName}`,
+      status: data.status === "Pending" ? "pending" : "posted"
+    }});
+    addLinkedLedgerCreateOperation(operations, {
+      ...data,
+      date: data.paymentDate,
+      mode: data.paymentMode,
+      desc: `Salary payment - ${data.employeeName}`,
+      paymentStatus: data.status
+    }, {
+      id: sourceId,
+      moduleName: "Salary",
+      amount: data.amount,
+      direction: "out",
+      reference: `${data.employeeName} - ${data.period}`
+    });
+  }
+  if (operations.length) await commitBatchOperations(operations);
+}
+
+
 async function reconcileProfitSharingLedger(data, meta) {
   const operations = [];
   const sourceId = meta.id || meta.previous?.id;
@@ -4622,6 +4818,12 @@ function getFormConfigForKey(key) {
       populate: populateBankBook,
       beforeDelete: (record) => reconcileLedgerBalancesAfterDelete(KEYS.bankBook, record)
     },
+    [KEYS.employees]: { submitButtonId: "employee-submit-btn", populate: populateEmployee },
+    [KEYS.salaryPayments]: {
+      submitButtonId: "salary-payment-submit-btn",
+      populate: populateSalaryPayment,
+      beforeDelete: (record) => reconcileSalaryPayment(null, { isDelete: true, id: record.id, previous: record })
+    },
     [KEYS.production]: {
       submitButtonId: "production-submit-btn",
       populate: populateProduction,
@@ -4793,6 +4995,29 @@ function populateProduction(record) {
   recalculateProductionCost();
 }
 
+
+function populateEmployee(record) {
+  setValue("emp-name", record.name);
+  setValue("emp-phone", record.phone);
+  setValue("emp-role", record.role);
+  setValue("emp-salary-type", record.salaryType);
+  setValue("emp-salary-rate", record.salaryRate);
+  setValue("emp-joining-date", record.joiningDate);
+  setValue("emp-status", record.status);
+  setValue("emp-notes", record.notes);
+}
+
+function populateSalaryPayment(record) {
+  refreshSalaryEmployeeOptions();
+  setValue("salary-employee", record.employeeId);
+  setValue("salary-period", record.period);
+  setValue("salary-amount", record.amount);
+  setValue("salary-mode", record.paymentMode);
+  setValue("salary-date", record.paymentDate);
+  setValue("salary-status", record.status);
+  setValue("salary-notes", record.notes);
+}
+
 function populateSharing(record) {
   setValue("shr-from-date", record.fromDate);
   setValue("shr-to-date", record.toDate);
@@ -4823,6 +5048,7 @@ function activeSectionKey() {
     cashbook: KEYS.cashBook,
     bankbook: KEYS.bankBook,
     "company-finance": KEYS.dailyAccounts,
+    employees: KEYS.employees,
     production: KEYS.production,
     "raw-materials": KEYS.rawMaterials,
     "investment-sharing": KEYS.sharing
