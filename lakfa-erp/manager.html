@@ -49,6 +49,7 @@
           <div class="sidebar-submenu">
             <a href="#" class="sidebar-item" data-section="products"><span class="icon" data-icon="box"></span> Products</a>
             <a href="#" class="sidebar-item" data-section="inventory"><span class="icon" data-icon="inventory"></span> Inventory / Stock</a>
+            <a href="#" class="sidebar-item" data-section="raw-materials"><span class="icon" data-icon="inventory"></span> Raw Materials</a>
             <a href="#" class="sidebar-item" data-section="production"><span class="icon" data-icon="production"></span> Production</a>
           </div>
         </div>
@@ -482,6 +483,48 @@
           </div>
         </section>
 
+
+        <!-- ================= RAW MATERIALS MODULE ================= -->
+        <section id="section-raw-materials" class="app-section">
+          <div class="section-header"><h2 class="section-title">Raw Materials Master</h2></div>
+          <div class="module-layout">
+            <div class="card">
+              <div class="card-title">Add / Update Raw Material</div>
+              <form id="raw-material-form">
+                <div class="form-grid-2">
+                  <div class="form-group"><label>Material Name</label><input type="text" id="raw-name" class="form-control" required></div>
+                  <div class="form-group"><label>Category</label><input type="text" id="raw-category" class="form-control" required></div>
+                </div>
+                <div class="form-grid-3">
+                  <div class="form-group"><label>Unit</label><input type="text" id="raw-unit" class="form-control" required placeholder="Kg, Ltr, Pcs"></div>
+                  <div class="form-group"><label>Opening Stock</label><input type="number" id="raw-opening" class="form-control" min="0" step="0.001" required></div>
+                  <div class="form-group"><label>Current Stock</label><input type="number" id="raw-current" class="form-control" min="0" step="0.001" required></div>
+                </div>
+                <div class="form-grid-3">
+                  <div class="form-group"><label>Minimum Stock</label><input type="number" id="raw-minimum" class="form-control" min="0" step="0.001" required></div>
+                  <div class="form-group"><label>Rate ₹ / Unit</label><input type="number" id="raw-rate" class="form-control" min="0" step="0.01" required></div>
+                  <div class="form-group"><label>Expiry Date</label><input type="date" id="raw-expiry" class="form-control"></div>
+                </div>
+                <div class="form-grid-2">
+                  <div class="form-group"><label>Supplier</label><input type="text" id="raw-supplier" class="form-control"></div>
+                  <div class="form-group"><label>Batch Number</label><input type="text" id="raw-batch" class="form-control"></div>
+                </div>
+                <div class="form-grid-2">
+                  <div class="form-group"><label>Status</label><select id="raw-status" class="form-control"><option>Active</option><option>Low Stock</option><option>Inactive</option></select></div>
+                  <div class="form-group"><label>Notes</label><input type="text" id="raw-notes" class="form-control"></div>
+                </div>
+                <button type="submit" id="raw-material-submit-btn" class="btn-primary submit-btn" style="width: 100%;">Save Record</button>
+              </form>
+            </div>
+            <div class="table-responsive">
+              <table>
+                <thead><tr><th>Material</th><th>Category</th><th>Stock</th><th>Rate</th><th>Supplier / Batch</th><th>Expiry</th><th>Status</th><th>Actions</th></tr></thead>
+                <tbody id="raw-materials-table-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
         <!-- ================= PRODUCTION MODULE ================= -->
         <section id="section-production" class="app-section">
           <div class="section-header"><h2 class="section-title">Production Batches & Yields</h2></div>
@@ -494,14 +537,29 @@
                   <div class="form-group"><label>Production Date</label><input type="date" id="prod-date" class="form-control" required></div>
                 </div>
                 <div class="form-group"><label>Finished Product Produced</label><input type="text" id="prod-pname" class="form-control" placeholder="Lakfa Ghee Rice Powder" required></div>
-                <div class="form-group"><label>Raw Material Used (Qty / Name)</label><input type="text" id="prod-raw" class="form-control" placeholder="e.g. Raw Rice 500Kg" required></div>
+                <div class="order-items-title-row">
+                  <h4>Raw Materials Consumed</h4>
+                  <button type="button" id="add-production-material-btn" class="btn-secondary btn-sm">+ Add Material</button>
+                </div>
+                <div id="production-materials-container" class="order-items-container"></div>
+                <template id="production-material-template">
+                  <div class="order-item-row" data-production-material-row>
+                    <div class="form-group"><label>Raw Material</label><select class="form-control production-material-select" required></select><small class="stock-availability">Stock: -</small></div>
+                    <div class="form-group"><label>Qty Used</label><input type="number" class="form-control production-material-qty" min="0.001" step="0.001" required></div>
+                    <div class="form-group"><label>Unit</label><input type="text" class="form-control production-material-unit" readonly></div>
+                    <div class="form-group"><label>Rate ₹</label><input type="number" class="form-control production-material-rate" min="0" step="0.01" required></div>
+                    <div class="form-group"><label>Line Cost ₹</label><input type="number" class="form-control production-material-cost" readonly></div>
+                    <div class="form-group"><label>&nbsp;</label><button type="button" class="btn-danger btn-sm remove-production-material-btn">Remove</button></div>
+                  </div>
+                </template>
                 <div class="form-grid-3" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.5rem;">
-                  <div class="form-group"><label>Quantity Produced</label><input type="number" id="prod-qty" class="form-control" required></div>
+                  <div class="form-group"><label>Quantity Produced</label><input type="number" id="prod-qty" class="form-control" min="0.001" step="0.001" required></div>
                   <div class="form-group"><label>Packing Quantity</label><input type="text" id="prod-pack" class="form-control" placeholder="e.g. 500 packets" required></div>
                   <div class="form-group"><label>Wastage Quantity</label><input type="text" id="prod-waste" class="form-control" placeholder="e.g. 2 Kg" required></div>
                 </div>
-                <div class="form-grid-2">
-                  <div class="form-group"><label>Total Batch Cost (₹)</label><input type="number" id="prod-cost" class="form-control" step="0.01" required></div>
+                <div class="form-grid-3">
+                  <div class="form-group"><label>Total Batch Cost (₹)</label><input type="number" id="prod-cost" class="form-control" step="0.01" readonly></div>
+                  <div class="form-group"><label>Cost / Unit (₹)</label><input type="number" id="prod-cost-unit" class="form-control" step="0.01" readonly></div>
                   <div class="form-group"><label>Supervisor / Staff</label><input type="text" id="prod-staff" class="form-control" required></div>
                 </div>
                 <div class="form-group"><label>Production Notes</label><input type="text" id="prod-notes" class="form-control"></div>

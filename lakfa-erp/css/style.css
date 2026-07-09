@@ -781,3 +781,4 @@ tr:hover td {
 .order-status-control select { min-width: 130px; padding: 0.35rem 0.45rem; font-size: 0.75rem; }
 .order-recycle-actions { display: flex; flex-wrap: wrap; gap: 0.35rem; min-width: 180px; }
 .order-payment-modal-card { width: min(520px, 100%); }
+.text-danger { color: var(--danger); }

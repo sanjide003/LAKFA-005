@@ -52,6 +52,8 @@ service cloud.firestore {
       allow create, update, delete: if isAdmin();
     }
 
+    // Admin-managed ERP collections include rawMaterials, rawMaterialLedger, stockLedger,
+    // ledgerEntries, productionBatches, inventory, and all other operational modules.
     match /{collectionName}/{documentId} {
       allow read: if isAdmin() || (isInvestor() && investorReportCollection(collectionName));
       allow create, update, delete: if isAdmin();

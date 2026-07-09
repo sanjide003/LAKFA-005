@@ -12,6 +12,10 @@ const KEYS = {
   purchases: "lakfa_purchases",
   inventory: "lakfa_inventory",
   production: "lakfa_production",
+  rawMaterials: "lakfa_raw_materials",
+  rawMaterialLedger: "lakfa_raw_material_ledger",
+  stockLedger: "lakfa_stock_ledger",
+  ledgerEntries: "lakfa_ledger_entries",
   sales: "lakfa_sales",
   orders: "lakfa_orders",
   delivery: "lakfa_delivery",
@@ -39,12 +43,12 @@ const NOTIFICATION_DOCUMENT_KEYS = new Set([KEYS.orders, KEYS.sales, KEYS.delive
 const READ_ONLY_MESSAGE = "This module is read-only until its Firestore write workflow is enabled.";
 const WRITABLE_FORM_IDS = new Set([
   "product-form", "customer-form", "supplier-form", "investors-form",
-  "purchase-form", "inventory-form", "sales-form", "orders-form", "delivery-form",
+  "purchase-form", "inventory-form", "raw-material-form", "sales-form", "orders-form", "delivery-form",
   "expenses-form", "income-form", "cashbook-form", "bankbook-form", "production-form", "sharing-form"
 ]);
 const WRITABLE_KEYS = new Set([
   KEYS.products, KEYS.customers, KEYS.suppliers, KEYS.investors,
-  KEYS.purchases, KEYS.inventory, KEYS.sales, KEYS.orders, KEYS.delivery,
+  KEYS.purchases, KEYS.inventory, KEYS.rawMaterials, KEYS.sales, KEYS.orders, KEYS.delivery,
   KEYS.expenses, KEYS.income, KEYS.cashBook, KEYS.bankBook, KEYS.production, KEYS.sharing
 ]);
 
@@ -55,6 +59,10 @@ const COLLECTION_BY_KEY = {
   [KEYS.purchases]: COLLECTIONS.purchases,
   [KEYS.inventory]: COLLECTIONS.inventory,
   [KEYS.production]: COLLECTIONS.production,
+  [KEYS.rawMaterials]: COLLECTIONS.rawMaterials,
+  [KEYS.rawMaterialLedger]: COLLECTIONS.rawMaterialLedger,
+  [KEYS.stockLedger]: COLLECTIONS.stockLedger,
+  [KEYS.ledgerEntries]: COLLECTIONS.ledgerEntries,
   [KEYS.sales]: COLLECTIONS.sales,
   [KEYS.orders]: COLLECTIONS.orders,
   [KEYS.delivery]: COLLECTIONS.delivery,
@@ -90,6 +98,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   hydrateSvgIcons();
   initSidebarRouting();
   initOrderManagementUi();
+  initProductionMaterialUi();
 
   // 6. Initialize report export actions
   initReportExportActions();
@@ -502,6 +511,10 @@ function renderModule(sectionId) {
       break;
     case "production":
       renderTable(KEYS.production, "production-table-body");
+      refreshProductionMaterialOptions();
+      break;
+    case "raw-materials":
+      renderTable(KEYS.rawMaterials, "raw-materials-table-body");
       break;
     case "sales":
       renderTable(KEYS.sales, "sales-table-body");
@@ -660,23 +673,34 @@ function renderTable(key, tableBodyId) {
     } else if (key === KEYS.inventory) {
       cellsHTML = `
         <td><strong>${row.name}</strong><br><small>${row.id}</small></td>
-        <td><span class="badge badge-info">${row.stockType}</span></td>
+        <td><span class="badge badge-info">${row.stockType || row.type || "Stock"}</span></td>
         <td>${row.openingStock}</td>
         <td style="color: var(--success);">+${row.stockIn}</td>
         <td style="color: var(--danger);">${row.stockOut > 0 ? '-' + row.stockOut : '0'}</td>
         <td><strong>${row.currentStock}</strong> ${row.unit}</td>
-        <td>${row.minStock}</td>
+        <td>${row.minStock ?? row.minAlert ?? row.minimumStock ?? 0}</td>
         <td>${formatDate(row.lastUpdated)}</td>
+      `;
+    } else if (key === KEYS.rawMaterials) {
+      const lowStock = getNumberFromValue(row.currentStock) <= getNumberFromValue(row.minimumStock);
+      cellsHTML = `
+        <td><strong>${row.name}</strong><br><small>${row.id}</small></td>
+        <td>${row.category}</td>
+        <td><strong class="${lowStock ? 'text-danger' : ''}">${row.currentStock}</strong> / ${row.minimumStock} ${row.unit}</td>
+        <td>${formatCurrency(row.rate)}</td>
+        <td>${row.supplier || '-'}<br><small>${row.batchNumber || '-'}</small></td>
+        <td>${row.expiryDate ? formatDate(row.expiryDate) : '-'}</td>
+        <td><span class="badge ${row.status === 'Active' && !lowStock ? 'badge-success' : lowStock ? 'badge-warning' : 'badge-danger'}">${lowStock ? 'Low Stock' : row.status}</span></td>
       `;
     } else if (key === KEYS.production) {
       cellsHTML = `
-        <td><strong>${row.batchNumber}</strong><br><small>${formatDate(row.date)}</small></td>
+        <td><strong>${row.batch || row.batchNumber}</strong><br><small>${formatDate(row.date)}</small></td>
         <td>${row.productName}</td>
-        <td>${row.rawMaterial}</td>
-        <td>${row.qtyProduced}</td>
+        <td>${renderProductionMaterialsSummary(row.rawMaterials)}</td>
+        <td>${row.quantityProduced ?? row.qtyProduced}</td>
         <td>${row.packingQty}</td>
         <td style="color: var(--danger);">${row.wastage}</td>
-        <td>${formatCurrency(row.cost)}</td>
+        <td>${formatCurrency(row.batchCost ?? row.cost)}</td>
         <td>${row.staff}</td>
       `;
     } else if (key === KEYS.sales) {
@@ -1415,6 +1439,121 @@ async function ensureCustomerFromOrder(order) {
   } else {
     await createCollectionRecord(COLLECTIONS.customers, payload);
   }
+}
+
+
+function initProductionMaterialUi() {
+  document.getElementById("add-production-material-btn")?.addEventListener("click", () => addProductionMaterialRow());
+  document.getElementById("production-materials-container")?.addEventListener("input", handleProductionMaterialChange);
+  document.getElementById("production-materials-container")?.addEventListener("change", handleProductionMaterialChange);
+  document.getElementById("production-materials-container")?.addEventListener("click", (event) => {
+    if (!event.target.closest(".remove-production-material-btn")) return;
+    const rows = document.querySelectorAll("[data-production-material-row]");
+    if (rows.length <= 1) {
+      showToast("At least one raw material is required.", "info");
+      return;
+    }
+    event.target.closest("[data-production-material-row]")?.remove();
+    recalculateProductionCost();
+  });
+  document.getElementById("prod-qty")?.addEventListener("input", recalculateProductionCost);
+  addProductionMaterialRow();
+}
+
+function addProductionMaterialRow(material = {}) {
+  const template = document.getElementById("production-material-template");
+  const container = document.getElementById("production-materials-container");
+  if (!template || !container) return;
+  const fragment = template.content.cloneNode(true);
+  const row = fragment.querySelector("[data-production-material-row]");
+  container.appendChild(fragment);
+  populateProductionMaterialSelect(row?.querySelector(".production-material-select"));
+  if (material.materialId || material.name) {
+    const select = row.querySelector(".production-material-select");
+    select.value = material.materialId || findRawMaterialByName(material.name)?.id || "";
+  }
+  row.querySelector(".production-material-qty").value = material.quantity || material.qty || "";
+  row.querySelector(".production-material-rate").value = material.rate || "";
+  updateProductionMaterialRow(row);
+}
+
+function refreshProductionMaterialOptions() {
+  document.querySelectorAll(".production-material-select").forEach((select) => {
+    const currentValue = select.value;
+    populateProductionMaterialSelect(select);
+    select.value = currentValue;
+    updateProductionMaterialRow(select.closest("[data-production-material-row]"));
+  });
+}
+
+function populateProductionMaterialSelect(select) {
+  if (!select) return;
+  const materials = getStoredRecords(KEYS.rawMaterials);
+  select.innerHTML = `<option value="">Select raw material</option>` + materials.map((material) => `
+    <option value="${escapeHtml(material.id)}" data-name="${escapeHtml(material.name)}" data-unit="${escapeHtml(material.unit || '')}" data-rate="${getNumberFromValue(material.rate)}" data-stock="${getNumberFromValue(material.currentStock)}">${escapeHtml(material.name)} (${getNumberFromValue(material.currentStock)} ${escapeHtml(material.unit || '')})</option>
+  `).join("");
+}
+
+function handleProductionMaterialChange(event) {
+  const row = event.target.closest("[data-production-material-row]");
+  if (!row) return;
+  updateProductionMaterialRow(row);
+  recalculateProductionCost();
+}
+
+function updateProductionMaterialRow(row) {
+  if (!row) return;
+  const select = row.querySelector(".production-material-select");
+  const selected = select?.selectedOptions?.[0];
+  const unit = selected?.dataset.unit || "";
+  const stock = getNumberFromValue(selected?.dataset.stock);
+  const qty = getNumberFromValue(row.querySelector(".production-material-qty")?.value);
+  const rateInput = row.querySelector(".production-material-rate");
+  if (rateInput && !rateInput.value) rateInput.value = selected?.dataset.rate || 0;
+  row.querySelector(".production-material-unit").value = unit;
+  const rate = getNumberFromValue(rateInput?.value);
+  row.querySelector(".production-material-cost").value = (qty * rate).toFixed(2);
+  const stockEl = row.querySelector(".stock-availability");
+  if (stockEl) {
+    stockEl.textContent = selected?.value ? `Stock: ${stock} ${unit}` : "Stock: -";
+    stockEl.classList.toggle("low-stock", Boolean(selected?.value) && qty > stock);
+  }
+}
+
+function recalculateProductionCost() {
+  const totalCost = getProductionMaterialsFromForm().reduce((sum, material) => sum + material.lineCost, 0);
+  const qtyProduced = getNumber("prod-qty");
+  setValue("prod-cost", totalCost.toFixed(2));
+  setValue("prod-cost-unit", qtyProduced > 0 ? (totalCost / qtyProduced).toFixed(2) : "0.00");
+}
+
+function getProductionMaterialsFromForm() {
+  return [...document.querySelectorAll("[data-production-material-row]")].map((row) => {
+    const select = row.querySelector(".production-material-select");
+    const selected = select?.selectedOptions?.[0];
+    const quantity = getNumberFromValue(row.querySelector(".production-material-qty")?.value);
+    const rate = getNumberFromValue(row.querySelector(".production-material-rate")?.value);
+    return {
+      materialId: select?.value || "",
+      name: selected?.dataset.name || "",
+      quantity,
+      unit: selected?.dataset.unit || row.querySelector(".production-material-unit")?.value || "",
+      rate,
+      lineCost: quantity * rate,
+      stockAvailable: getNumberFromValue(selected?.dataset.stock)
+    };
+  }).filter((material) => material.materialId && material.name && material.quantity > 0);
+}
+
+function renderProductionMaterialsSummary(materials = []) {
+  if (!Array.isArray(materials) || !materials.length) return "-";
+  return materials.map((material) => `${escapeHtml(material.name)} (${material.quantity} ${escapeHtml(material.unit || '')})`).join("<br>");
+}
+
+function findRawMaterialByName(name) {
+  return getStoredRecords(KEYS.rawMaterials).find((material) =>
+    (material.name || "").toLowerCase() === String(name || "").toLowerCase()
+  );
 }
 
 
@@ -2447,6 +2586,37 @@ function initWritableFormListeners() {
     populate: populateInventory
   });
 
+
+  setupFirestoreForm({
+    formId: "raw-material-form",
+    key: KEYS.rawMaterials,
+    submitButtonId: "raw-material-submit-btn",
+    validate: (data) => data.name && data.category && data.unit && data.currentStock >= 0 && data.minimumStock >= 0 && data.rate >= 0,
+    getData: () => {
+      const currentStock = getNumber("raw-current");
+      const minimumStock = getNumber("raw-minimum");
+      return {
+        name: getValue("raw-name"),
+        category: getValue("raw-category"),
+        unit: getValue("raw-unit"),
+        openingStock: getNumber("raw-opening"),
+        currentStock,
+        minimumStock,
+        rate: getNumber("raw-rate"),
+        expiryDate: getValue("raw-expiry"),
+        supplier: getValue("raw-supplier"),
+        batchNumber: getValue("raw-batch"),
+        status: currentStock <= minimumStock ? "Low Stock" : getValue("raw-status"),
+        notes: getValue("raw-notes")
+      };
+    },
+    populate: populateRawMaterial,
+    afterSave: async (data, meta) => {
+      await reconcileRawMaterialOpeningLedger(data, meta);
+      refreshProductionMaterialOptions();
+    }
+  });
+
   setupFirestoreForm({
     formId: "sales-form",
     key: KEYS.sales,
@@ -2643,25 +2813,33 @@ function initWritableFormListeners() {
     formId: "production-form",
     key: KEYS.production,
     submitButtonId: "production-submit-btn",
-    validate: (data) => data.batch && data.date && data.productName && data.quantityProduced > 0 && data.batchCost >= 0,
-    getData: () => ({
-      batch: getValue("prod-batch"),
-      date: getValue("prod-date"),
-      productName: getValue("prod-pname"),
-      rawMaterial: getValue("prod-raw"),
-      quantityProduced: getNumber("prod-qty"),
-      packingQty: getValue("prod-pack"),
-      wastage: getValue("prod-waste"),
-      batchCost: getNumber("prod-cost"),
-      staff: getValue("prod-staff"),
-      notes: getValue("prod-notes")
-    }),
+    validate: (data) => data.batch && data.date && data.productName && data.quantityProduced > 0 && data.rawMaterials.length > 0 && data.batchCost >= 0,
+    getData: () => {
+      const rawMaterials = getProductionMaterialsFromForm();
+      const batchCost = rawMaterials.reduce((sum, material) => sum + material.lineCost, 0);
+      const quantityProduced = getNumber("prod-qty");
+      return {
+        batch: getValue("prod-batch"),
+        date: getValue("prod-date"),
+        productName: getValue("prod-pname"),
+        rawMaterials,
+        rawMaterial: rawMaterials.map((material) => `${material.name} ${material.quantity} ${material.unit}`).join(", "),
+        quantityProduced,
+        packingQty: getValue("prod-pack"),
+        wastage: getValue("prod-waste"),
+        batchCost,
+        costPerUnit: quantityProduced > 0 ? batchCost / quantityProduced : 0,
+        staff: getValue("prod-staff"),
+        notes: getValue("prod-notes"),
+        status: "Posted"
+      };
+    },
     populate: populateProduction,
     afterSave: async (data, meta) => {
       await reconcileProductionStock(data, meta);
     },
     beforeDelete: async (record) => {
-      await reconcileProductionStock(null, { isDelete: true, previous: record });
+      await reconcileProductionStock(null, { isDelete: true, id: record.id, previous: record });
     }
   });
 
@@ -2725,6 +2903,11 @@ function setupFirestoreForm(config) {
       }
       currentEditId = null;
       form.reset();
+      if (config.formId === "production-form") {
+        document.getElementById("production-materials-container").innerHTML = "";
+        addProductionMaterialRow();
+        recalculateProductionCost();
+      }
       if (button) button.textContent = "Save Record";
       await refreshActiveData();
     } catch (err) {
@@ -2859,13 +3042,196 @@ async function reconcileOrderInventoryAndLedger(data, meta) {
   if (operations.length) await commitBatchOperations(operations);
 }
 
-async function reconcileProductionStock(data, meta) {
+async function reconcileRawMaterialOpeningLedger(data, meta) {
   const operations = [];
-  addStockReversalOperations(operations, meta.previous, "Production");
+  addLinkedMovementDeleteOperations(operations, meta.id || meta.previous?.id);
   if (!meta.isDelete && data) {
-    addStockApplyOperations(operations, data.productName, data.quantityProduced, "Production", data.batch);
+    addRawMaterialLedgerCreateOperation(operations, data, {
+      sourceId: meta.id,
+      movementType: "opening",
+      quantityDelta: getNumberFromValue(data.openingStock),
+      sourceType: "Raw Material Opening",
+      sourceRef: data.batchNumber || data.name,
+      notes: "Opening stock recorded from raw material master"
+    });
   }
   if (operations.length) await commitBatchOperations(operations);
+}
+
+async function reconcileProductionStock(data, meta) {
+  const operations = [];
+  const sourceId = meta.id || meta.previous?.id;
+
+  addLinkedMovementDeleteOperations(operations, sourceId);
+  addProductionReversalOperations(operations, meta.previous, sourceId);
+
+  if (!meta.isDelete && data) {
+    addProductionApplyOperations(operations, data, sourceId);
+  }
+
+  if (operations.length) await commitBatchOperations(operations);
+}
+
+function addProductionReversalOperations(operations, previous, sourceId) {
+  if (!previous) return;
+  const materials = getProductionMaterials(previous);
+  materials.forEach((material) => {
+    addRawMaterialStockOperation(operations, material.materialId, material.name, material.quantity, "Production reversal", previous.batch, sourceId, material);
+  });
+  addStockApplyOperations(operations, previous.productName, -getNumberFromValue(previous.quantityProduced), "Production reversal", previous.batch);
+}
+
+function addProductionApplyOperations(operations, data, sourceId) {
+  const materials = getProductionMaterials(data);
+  materials.forEach((material) => {
+    addRawMaterialStockOperation(operations, material.materialId, material.name, -material.quantity, "Production consumption", data.batch, sourceId, material);
+  });
+  addStockApplyOperations(operations, data.productName, data.quantityProduced, "Production finished goods", data.batch);
+  addStockLedgerCreateOperation(operations, data, {
+    sourceId,
+    itemName: data.productName,
+    movementType: "production_in",
+    quantityDelta: data.quantityProduced,
+    unit: "Unit",
+    rate: data.costPerUnit,
+    amount: data.batchCost,
+    sourceType: "Production",
+    sourceRef: data.batch
+  });
+  addUnifiedLedgerCreateOperation(operations, data, {
+    sourceId,
+    moduleName: "Production",
+    amount: data.batchCost,
+    direction: "journal",
+    reference: data.batch,
+    description: `Production batch ${data.batch} posted for ${data.productName}`
+  });
+}
+
+function getProductionMaterials(record = {}) {
+  if (Array.isArray(record.rawMaterials) && record.rawMaterials.length) {
+    return record.rawMaterials.map((material) => ({
+      materialId: material.materialId,
+      name: material.name,
+      quantity: getNumberFromValue(material.quantity || material.qty),
+      unit: material.unit || "",
+      rate: getNumberFromValue(material.rate),
+      lineCost: getNumberFromValue(material.lineCost)
+    })).filter((material) => material.name && material.quantity > 0);
+  }
+  return [{ name: record.rawMaterial, quantity: 0, unit: "", rate: 0, lineCost: 0 }].filter((material) => material.name && material.quantity > 0);
+}
+
+function addRawMaterialStockOperation(operations, materialId, materialName, quantityDelta, sourceType, sourceRef, sourceId, material = {}) {
+  if (!quantityDelta) return;
+  const rawMaterial = findRawMaterialRecord(materialId, materialName);
+  if (!rawMaterial?.id) return;
+  const existingOperation = operations.find((operation) =>
+    operation.type === "update"
+    && operation.collectionName === COLLECTIONS.rawMaterials
+    && operation.id === rawMaterial.id
+  );
+  const payload = existingOperation?.payload || {
+    currentStock: getNumberFromValue(rawMaterial.currentStock),
+    status: rawMaterial.status || "Active"
+  };
+  const nextStock = Math.max(getNumberFromValue(payload.currentStock) + quantityDelta, 0);
+  payload.currentStock = nextStock;
+  payload.status = nextStock <= getNumberFromValue(rawMaterial.minimumStock) ? "Low Stock" : "Active";
+  payload.lastUpdated = new Date().toISOString().slice(0, 10);
+  payload.lastStockSource = sourceType;
+  payload.lastStockRef = sourceRef || "";
+  if (!existingOperation) {
+    operations.push({ type: "update", collectionName: COLLECTIONS.rawMaterials, id: rawMaterial.id, payload });
+  }
+  addRawMaterialLedgerCreateOperation(operations, rawMaterial, {
+    sourceId,
+    movementType: quantityDelta >= 0 ? "in" : "out",
+    quantityDelta,
+    sourceType,
+    sourceRef,
+    material,
+    notes: sourceType
+  });
+}
+
+function findRawMaterialRecord(materialId, materialName) {
+  return getStoredRecords(KEYS.rawMaterials).find((material) =>
+    material.id === materialId || (material.name || "").toLowerCase() === String(materialName || "").toLowerCase()
+  );
+}
+
+function addLinkedMovementDeleteOperations(operations, sourceId) {
+  if (!sourceId) return;
+  [KEYS.rawMaterialLedger, KEYS.stockLedger, KEYS.ledgerEntries].forEach((key) => {
+    getStoredRecords(key)
+      .filter((record) => record.sourceId === sourceId || record.referenceId === sourceId)
+      .forEach((record) => operations.push({ type: "delete", collectionName: COLLECTION_BY_KEY[key], id: record.id }));
+  });
+}
+
+function addRawMaterialLedgerCreateOperation(operations, rawMaterial, meta) {
+  operations.push({
+    type: "set",
+    collectionName: COLLECTIONS.rawMaterialLedger,
+    payload: {
+      sourceId: meta.sourceId || null,
+      materialId: rawMaterial.id || meta.material?.materialId || null,
+      materialName: rawMaterial.name || meta.material?.name || "",
+      movementType: meta.movementType,
+      quantityDelta: meta.quantityDelta,
+      quantityIn: Math.max(meta.quantityDelta, 0),
+      quantityOut: Math.max(-meta.quantityDelta, 0),
+      unit: rawMaterial.unit || meta.material?.unit || "",
+      rate: getNumberFromValue(rawMaterial.rate || meta.material?.rate),
+      amount: Math.abs(meta.quantityDelta) * getNumberFromValue(rawMaterial.rate || meta.material?.rate),
+      sourceType: meta.sourceType,
+      sourceRef: meta.sourceRef || "",
+      notes: meta.notes || "",
+      date: new Date().toISOString().slice(0, 10)
+    }
+  });
+}
+
+function addStockLedgerCreateOperation(operations, data, meta) {
+  operations.push({
+    type: "set",
+    collectionName: COLLECTIONS.stockLedger,
+    payload: {
+      sourceId: meta.sourceId || null,
+      itemName: meta.itemName,
+      movementType: meta.movementType,
+      quantityDelta: meta.quantityDelta,
+      quantityIn: Math.max(meta.quantityDelta, 0),
+      quantityOut: Math.max(-meta.quantityDelta, 0),
+      unit: meta.unit || "",
+      rate: getNumberFromValue(meta.rate),
+      amount: getNumberFromValue(meta.amount),
+      sourceType: meta.sourceType,
+      sourceRef: meta.sourceRef || "",
+      date: data.date || new Date().toISOString().slice(0, 10)
+    }
+  });
+}
+
+function addUnifiedLedgerCreateOperation(operations, data, meta) {
+  operations.push({
+    type: "set",
+    collectionName: COLLECTIONS.ledgerEntries,
+    payload: {
+      sourceId: meta.sourceId || null,
+      date: data.date || new Date().toISOString().slice(0, 10),
+      module: meta.moduleName,
+      account: "Production / Inventory",
+      type: meta.direction || "journal",
+      debit: getNumberFromValue(meta.amount),
+      credit: getNumberFromValue(meta.amount),
+      referenceCollection: COLLECTIONS.production,
+      referenceId: meta.sourceId || null,
+      description: meta.description || "",
+      status: "posted"
+    }
+  });
 }
 
 async function reconcileProfitSharingLedger(data, meta) {
@@ -3009,7 +3375,28 @@ function addStockApplyOperations(operations, itemName, quantityDelta, sourceType
   const inventoryRecord = getStoredRecords(KEYS.inventory).find((item) =>
     (item.name || "").toLowerCase() === itemName.toLowerCase()
   );
-  if (!inventoryRecord?.id) return;
+  if (!inventoryRecord?.id) {
+    if (quantityDelta <= 0) return;
+    operations.push({
+      type: "set",
+      collectionName: COLLECTIONS.inventory,
+      payload: {
+        name: itemName,
+        category: "Finished Product",
+        type: "Finished Product",
+        openingStock: 0,
+        stockIn: quantityDelta,
+        stockOut: 0,
+        currentStock: quantityDelta,
+        unit: "Unit",
+        minAlert: 0,
+        lastUpdated: new Date().toISOString().slice(0, 10),
+        lastStockSource: sourceType,
+        lastStockRef: sourceRef || ""
+      }
+    });
+    return;
+  }
 
   const currentStock = getNumberFromValue(inventoryRecord.currentStock);
   const stockIn = Math.max(quantityDelta, 0);
@@ -3226,6 +3613,11 @@ function getFormConfigForKey(key) {
       beforeDelete: (record) => reconcileStockAndLedger(null, { id: record.id, previous: record, moduleName: "Purchase" })
     },
     [KEYS.inventory]: { submitButtonId: "inventory-submit-btn", populate: populateInventory },
+    [KEYS.rawMaterials]: {
+      submitButtonId: "raw-material-submit-btn",
+      populate: populateRawMaterial,
+      beforeDelete: (record) => reconcileRawMaterialOpeningLedger(null, { isDelete: true, id: record.id, previous: record })
+    },
     [KEYS.sales]: {
       submitButtonId: "sales-submit-btn",
       populate: populateSales,
@@ -3260,7 +3652,7 @@ function getFormConfigForKey(key) {
     [KEYS.production]: {
       submitButtonId: "production-submit-btn",
       populate: populateProduction,
-      beforeDelete: (record) => reconcileProductionStock(null, { isDelete: true, previous: record })
+      beforeDelete: (record) => reconcileProductionStock(null, { isDelete: true, id: record.id, previous: record })
     },
     [KEYS.sharing]: {
       submitButtonId: "sharing-submit-btn",
@@ -3296,6 +3688,21 @@ function populateInventory(record) {
   setValue("stk-unit", record.unit);
   setValue("stk-min", record.minAlert);
   setValue("stk-date", record.lastUpdated);
+}
+
+function populateRawMaterial(record) {
+  setValue("raw-name", record.name);
+  setValue("raw-category", record.category);
+  setValue("raw-unit", record.unit);
+  setValue("raw-opening", record.openingStock);
+  setValue("raw-current", record.currentStock);
+  setValue("raw-minimum", record.minimumStock);
+  setValue("raw-rate", record.rate);
+  setValue("raw-expiry", record.expiryDate);
+  setValue("raw-supplier", record.supplier);
+  setValue("raw-batch", record.batchNumber);
+  setValue("raw-status", record.status);
+  setValue("raw-notes", record.notes);
 }
 
 function populateSales(record) {
@@ -3394,13 +3801,19 @@ function populateProduction(record) {
   setValue("prod-batch", record.batch);
   setValue("prod-date", record.date);
   setValue("prod-pname", record.productName);
-  setValue("prod-raw", record.rawMaterial);
+  document.getElementById("production-materials-container").innerHTML = "";
+  const materials = Array.isArray(record.rawMaterials) && record.rawMaterials.length
+    ? record.rawMaterials
+    : [{ name: record.rawMaterial, quantity: 1, rate: getNumberFromValue(record.batchCost), unit: "" }];
+  materials.forEach((material) => addProductionMaterialRow(material));
   setValue("prod-qty", record.quantityProduced);
   setValue("prod-pack", record.packingQty);
   setValue("prod-waste", record.wastage);
   setValue("prod-cost", record.batchCost);
+  setValue("prod-cost-unit", record.costPerUnit);
   setValue("prod-staff", record.staff);
   setValue("prod-notes", record.notes);
+  recalculateProductionCost();
 }
 
 function populateSharing(record) {
@@ -3430,6 +3843,7 @@ function activeSectionKey() {
     cashbook: KEYS.cashBook,
     bankbook: KEYS.bankBook,
     production: KEYS.production,
+    "raw-materials": KEYS.rawMaterials,
     "investment-sharing": KEYS.sharing
   }[activeSectionId];
 }
