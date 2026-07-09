@@ -1,0 +1,56 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function hasActiveProfile() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status == 'active';
+    }
+
+    function hasRole(role) {
+      return hasActiveProfile() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == role;
+    }
+
+    function isAdmin() {
+      return hasRole('admin');
+    }
+
+    function isInvestor() {
+      return hasRole('investor');
+    }
+
+    function isOwner(userId) {
+      return signedIn() && request.auth.uid == userId;
+    }
+
+    function investorReportCollection(collectionName) {
+      return collectionName in [
+        'investors',
+        'profitSharing',
+        'inventory',
+        'expenses',
+        'income'
+      ];
+    }
+
+    match /users/{userId} {
+      allow read: if isAdmin() || isOwner(userId);
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /settings/{documentId} {
+      allow read: if hasActiveProfile();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /{collectionName}/{documentId} {
+      allow read: if isAdmin() || (isInvestor() && investorReportCollection(collectionName));
+      allow create, update, delete: if isAdmin();
+    }
+  }
+}

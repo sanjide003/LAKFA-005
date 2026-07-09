@@ -48,15 +48,6 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-:root[data-theme="dark"] {
-  --bg-app: #0f172a;
-  --bg-card: #111827;
-  --text-main: #e5e7eb;
-  --text-muted: #94a3b8;
-  --border: #334155;
-  --primary-subtle: rgba(20, 184, 166, 0.18);
-}
-
 /* Utilities */
 .text-center { text-align: center; }
 .text-right { text-align: right; }

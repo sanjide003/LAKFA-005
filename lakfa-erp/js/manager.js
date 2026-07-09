@@ -38,8 +38,7 @@ const READ_ONLY_MESSAGE = "This module is read-only until its Firestore write wo
 const WRITABLE_FORM_IDS = new Set([
   "product-form", "customer-form", "supplier-form", "investors-form",
   "purchase-form", "inventory-form", "sales-form", "orders-form", "delivery-form",
-  "expenses-form", "income-form", "cashbook-form", "bankbook-form", "production-form", "sharing-form",
-  "app-appearance-form"
+  "expenses-form", "income-form", "cashbook-form", "bankbook-form", "production-form", "sharing-form"
 ]);
 const WRITABLE_KEYS = new Set([
   KEYS.products, KEYS.customers, KEYS.suppliers, KEYS.investors,
@@ -77,11 +76,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   // 2. Load Firestore data for all dashboard and table renderers
   await loadFirestoreData();
 
-  // 3. Load app/module settings foundation
+  // 3. Load Firebase-backed module settings foundation
   await loadAppSettings();
-  applyAppearanceSettings();
   initModuleSettingsPanel();
-  initAppAppearanceSettings();
 
   // 4. Enable Firestore writes for approved modules
   initWritableFormListeners();
@@ -403,117 +400,6 @@ function closeModuleSettings() {
   const modal = document.getElementById("module-settings-modal");
   if (modal) modal.hidden = true;
   document.body.style.overflow = "";
-}
-
-function initAppAppearanceSettings() {
-  const form = document.getElementById("app-appearance-form");
-  if (!form) return;
-  const settings = getAppearanceSettings();
-  setValue("appearance-theme", settings.theme);
-  setValue("appearance-header-color", settings.headerColor);
-  setValue("appearance-sidebar-color", settings.sidebarColor);
-  setValue("appearance-active-color", settings.activeColor);
-  form.addEventListener("input", (event) => {
-    if (event.target?.id === "appearance-theme") {
-      setAppearancePreset(getValue("appearance-theme"));
-    }
-    appSettings.appearance = readAppearanceForm();
-    applyAppearanceSettings();
-  });
-  form.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const button = document.getElementById("appearance-save-btn");
-    appSettings.appearance = readAppearanceForm();
-    if (button) button.disabled = true;
-    try {
-      await saveAppSettings();
-      showToast("Application settings saved to Firebase.", "success");
-    } catch (err) {
-      console.error("Unable to save application settings", err);
-      showToast(getFirebaseErrorMessage(err, "Unable to save application settings."), "error");
-    } finally {
-      if (button) button.disabled = false;
-    }
-  });
-}
-
-function readAppearanceForm() {
-  return {
-    theme: getValue("appearance-theme") || "light",
-    headerColor: getValue("appearance-header-color") || "#ffffff",
-    sidebarColor: getValue("appearance-sidebar-color") || "#ffffff",
-    activeColor: getValue("appearance-active-color") || "#0f766e"
-  };
-}
-
-function getAppearanceSettings() {
-  const preset = getAppearancePreset(appSettings.appearance?.theme || "light");
-  return {
-    theme: appSettings.appearance?.theme || preset.theme,
-    headerColor: appSettings.appearance?.headerColor || preset.headerColor,
-    sidebarColor: appSettings.appearance?.sidebarColor || preset.sidebarColor,
-    activeColor: appSettings.appearance?.activeColor || preset.activeColor
-  };
-}
-
-function applyAppearanceSettings() {
-  const settings = getAppearanceSettings();
-  const root = document.documentElement;
-  root.dataset.theme = settings.theme;
-  root.style.setProperty("--header-bg", settings.headerColor);
-  root.style.setProperty("--header-text", getReadableTextColor(settings.headerColor));
-  root.style.setProperty("--sidebar-bg", settings.sidebarColor);
-  root.style.setProperty("--sidebar-text", getReadableTextColor(settings.sidebarColor));
-  root.style.setProperty("--active-tab-bg", settings.activeColor);
-  root.style.setProperty("--active-tab-color", getReadableTextColor(settings.activeColor, settings.sidebarColor));
-}
-
-function hexToRgba(hex, alpha = 0.12) {
-  const normalized = String(hex || "#0f766e").replace("#", "");
-  const bigint = parseInt(normalized.length === 3 ? normalized.split("").map((char) => char + char).join("") : normalized, 16);
-  const r = (bigint >> 16) & 255;
-  const g = (bigint >> 8) & 255;
-  const b = bigint & 255;
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}
-
-function getAppearancePreset(theme = "light") {
-  if (theme === "dark") {
-    return {
-      theme: "dark",
-      headerColor: "#111827",
-      sidebarColor: "#0f172a",
-      activeColor: "#ef4444"
-    };
-  }
-  return {
-    theme: "light",
-    headerColor: "#dc2626",
-    sidebarColor: "#dc2626",
-    activeColor: "#ffffff"
-  };
-}
-
-function setAppearancePreset(theme) {
-  const preset = getAppearancePreset(theme);
-  setValue("appearance-header-color", preset.headerColor);
-  setValue("appearance-sidebar-color", preset.sidebarColor);
-  setValue("appearance-active-color", preset.activeColor);
-}
-
-function getReadableTextColor(backgroundHex, fallbackForLight = "#0f172a") {
-  const luminance = getHexLuminance(backgroundHex);
-  return luminance > 0.72 ? fallbackForLight : "#ffffff";
-}
-
-function getHexLuminance(hex) {
-  const normalized = String(hex || "#ffffff").replace("#", "");
-  const parsed = parseInt(normalized.length === 3 ? normalized.split("").map((char) => char + char).join("") : normalized, 16);
-  const channels = [(parsed >> 16) & 255, (parsed >> 8) & 255, parsed & 255].map((value) => {
-    const channel = value / 255;
-    return channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
-  });
-  return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
 }
 
 function getDefaultModuleSettings(sectionKey) {
