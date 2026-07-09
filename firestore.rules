@@ -32,7 +32,7 @@ service cloud.firestore {
     function collectionPermission(collectionName) {
       return collectionName in ['orders', 'sales', 'deliveries', 'customers', 'customerLedger', 'orderPayments', 'orderExpenses'] ? 'orders'
         : collectionName in ['products', 'inventory', 'rawMaterials', 'stockLedger', 'rawMaterialLedger'] ? 'inventory'
-        : collectionName in ['financeAccounts', 'financeCategories', 'financeTransfers', 'dailyAccounts', 'cashbook', 'bankbook', 'expenses', 'income', 'ledgerEntries', 'supplierLedger', 'purchases', 'suppliers', 'managerLoans', 'loanRepayments'] ? 'finance'
+        : collectionName in ['financeAccounts', 'financeCategories', 'financeTransfers', 'dailyAccounts', 'cashbook', 'bankbook', 'expenses', 'income', 'ledgerEntries', 'supplierLedger', 'purchases', 'suppliers', 'managerLoans', 'loanRepayments', 'employees', 'salaryPayments', 'assets'] ? 'finance'
         : collectionName in ['productionBatches'] ? 'production'
         : collectionName in ['investors', 'investorExpenses', 'investorPaymentRequests', 'profitDistributions', 'notifications'] ? 'investors'
         : collectionName in ['auditLogs'] ? 'reports'
