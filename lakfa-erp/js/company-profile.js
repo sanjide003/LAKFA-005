@@ -1,5 +1,7 @@
 /* Lakfa ERP Company Profile Controller */
 import { getDocument, saveDocument } from "./firebase-db.js";
+import { auth } from "./firebase-config.js";
+import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 import { showToast } from "./utils.js";
 
 const COMPANY_COLLECTION = "settings";
@@ -8,6 +10,8 @@ const MAX_INPUT_IMAGE_BYTES = 2 * 1024 * 1024;
 const MAX_DATA_URL_BYTES = 700 * 1024;
 const MAX_IMAGE_DIMENSION = 640;
 const IMAGE_QUALITY = 0.82;
+
+const AUTH_WAIT_TIMEOUT_MS = 2500;
 
 const COMPANY_FIELDS = [
   "companyName",
@@ -26,27 +30,60 @@ const COMPANY_FIELDS = [
 ];
 
 export async function loadCompanyProfile() {
-  return (await getDocument(COMPANY_COLLECTION, COMPANY_DOCUMENT)) || {};
+  await waitForAuthReady();
+  return normalizeCompanyProfile((await getDocument(COMPANY_COLLECTION, COMPANY_DOCUMENT)) || {});
 }
 
 export async function saveCompanyProfile(profile) {
-  await saveDocument(COMPANY_COLLECTION, COMPANY_DOCUMENT, profile);
+  await waitForAuthReady();
+  await saveDocument(COMPANY_COLLECTION, COMPANY_DOCUMENT, normalizeCompanyProfile(profile));
+}
+
+function waitForAuthReady() {
+  if (auth.currentUser) return Promise.resolve(auth.currentUser);
+  return new Promise((resolve) => {
+    let settled = false;
+    let unsubscribe = null;
+    const finish = (user = null) => {
+      if (settled) return;
+      settled = true;
+      if (unsubscribe) unsubscribe();
+      resolve(user);
+    };
+    unsubscribe = onAuthStateChanged(auth, (user) => finish(user));
+    setTimeout(() => finish(auth.currentUser), AUTH_WAIT_TIMEOUT_MS);
+  });
+}
+
+function normalizeCompanyProfile(profile = {}) {
+  return {
+    ...profile,
+    companyName: profile.companyName || profile.name || profile.company || "",
+    gst: profile.gst || profile.gstNumber || profile.gstin || "",
+    address: profile.address || profile.companyAddress || "",
+    phone: profile.phone || profile.mobile || profile.contactNumber || "",
+    email: profile.email || profile.companyEmail || "",
+    website: profile.website || profile.websiteLink || "",
+    logoDataUrl: profile.logoDataUrl || profile.logoUrl || "",
+    signatureDataUrl: profile.signatureDataUrl || profile.signatureLogoUrl || ""
+  };
 }
 
 export function applyCompanyProfile(profile = {}) {
-  const displayName = profile.companyName || "Lakfa ERP";
-  const logoSource = profile.logoDataUrl || profile.logoUrl || "";
+  const normalizedProfile = normalizeCompanyProfile(profile);
+  const displayName = normalizedProfile.companyName || "Lakfa ERP";
+  const logoSource = normalizedProfile.logoDataUrl || normalizedProfile.logoUrl || "";
 
   document.querySelectorAll("[data-company-name]").forEach((el) => {
     el.textContent = displayName;
   });
 
   document.querySelectorAll("[data-company-email]").forEach((el) => {
-    el.textContent = profile.email || "";
+    el.textContent = normalizedProfile.email || "";
   });
 
   document.querySelectorAll("[data-company-phone]").forEach((el) => {
-    el.textContent = profile.phone || "";
+    el.textContent = normalizedProfile.phone || "";
   });
 
   document.querySelectorAll("[data-company-logo]").forEach((img) => {
@@ -59,6 +96,10 @@ export function applyCompanyProfile(profile = {}) {
       img.classList.add("d-none");
       img.hidden = true;
     }
+  });
+
+  document.querySelectorAll("[data-company-gst]").forEach((el) => {
+    el.textContent = normalizedProfile.gst || "";
   });
 
   document.title = `${displayName} - ERP`;
@@ -81,6 +122,7 @@ export async function initCompanyProfileForm() {
 
   const profile = await applyCompanyProfileFromFirebase();
   populateCompanyProfileForm(form, profile);
+  initCompanyImageControls(form);
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -89,27 +131,41 @@ export async function initCompanyProfileForm() {
 
     try {
       const existingProfile = await loadCompanyProfile();
-      const payload = {
+      const payload = normalizeCompanyProfile({
         ...existingProfile,
         ...getCompanyProfileFormData(form)
-      };
+      });
       const logoFile = form.querySelector("#company-logo-file")?.files?.[0];
       const signatureFile = form.querySelector("#company-signature-logo-file")?.files?.[0];
+
+      if (form.dataset.removeLogo === "true") {
+        payload.logoDataUrl = "";
+        payload.logoUrl = "";
+      }
+
+      if (form.dataset.removeSignature === "true") {
+        payload.signatureDataUrl = "";
+        payload.signatureLogoUrl = "";
+      }
 
       if (logoFile) {
         payload.logoDataUrl = await imageFileToCompressedDataUrl(logoFile, "Company logo");
         payload.logoUrl = "";
+        form.dataset.removeLogo = "false";
       }
 
       if (signatureFile) {
         payload.signatureDataUrl = await imageFileToCompressedDataUrl(signatureFile, "Signature logo");
         payload.signatureLogoUrl = "";
+        form.dataset.removeSignature = "false";
       }
 
       await saveCompanyProfile(payload);
       const savedProfile = await loadCompanyProfile();
       applyCompanyProfile(savedProfile);
       populateCompanyProfileForm(form, savedProfile);
+      form.dataset.removeLogo = "false";
+      form.dataset.removeSignature = "false";
       form.querySelector("#company-logo-file").value = "";
       form.querySelector("#company-signature-logo-file").value = "";
       showToast("Company profile saved to Firestore.", "success");
@@ -123,17 +179,18 @@ export async function initCompanyProfileForm() {
 }
 
 function populateCompanyProfileForm(form, profile) {
+  const normalizedProfile = normalizeCompanyProfile(profile);
   COMPANY_FIELDS.forEach((field) => {
     const input = form.querySelector(`[name="${field}"]`);
     if (input && input.type !== "file") {
-      input.value = profile[field] || "";
+      input.value = normalizedProfile[field] || "";
     }
   });
 
-  updatePreviewImage("company-logo-preview", profile.logoDataUrl || profile.logoUrl);
-  updatePreviewImage("company-signature-logo-preview", profile.signatureDataUrl || profile.signatureLogoUrl);
-  updateImageStatus("company-logo-status", profile.logoDataUrl);
-  updateImageStatus("company-signature-logo-status", profile.signatureDataUrl);
+  updatePreviewImage("company-logo-preview", normalizedProfile.logoDataUrl || normalizedProfile.logoUrl);
+  updatePreviewImage("company-signature-logo-preview", normalizedProfile.signatureDataUrl || normalizedProfile.signatureLogoUrl);
+  updateImageStatus("company-logo-status", normalizedProfile.logoDataUrl);
+  updateImageStatus("company-signature-logo-status", normalizedProfile.signatureDataUrl);
 }
 
 function getCompanyProfileFormData(form) {
@@ -145,6 +202,48 @@ function getCompanyProfileFormData(form) {
     }
   });
   return data;
+}
+
+function initCompanyImageControls(form) {
+  const logoInput = form.querySelector("#company-logo-file");
+  const signatureInput = form.querySelector("#company-signature-logo-file");
+  const logoRemove = form.querySelector("#remove-company-logo-btn");
+  const signatureRemove = form.querySelector("#remove-company-signature-logo-btn");
+
+  form.dataset.removeLogo = "false";
+  form.dataset.removeSignature = "false";
+
+  logoInput?.addEventListener("change", () => previewSelectedImage(logoInput, "company-logo-preview", "company-logo-status", "Company logo selected; save to persist it."));
+  signatureInput?.addEventListener("change", () => previewSelectedImage(signatureInput, "company-signature-logo-preview", "company-signature-logo-status", "Signature image selected; save to persist it."));
+
+  logoRemove?.addEventListener("click", () => {
+    form.dataset.removeLogo = "true";
+    if (logoInput) logoInput.value = "";
+    setNamedFieldValue(form, "logoDataUrl", "");
+    updatePreviewImage("company-logo-preview", "");
+    updateImageStatus("company-logo-status", "", "Logo marked for removal. Save the profile to persist this change.");
+  });
+
+  signatureRemove?.addEventListener("click", () => {
+    form.dataset.removeSignature = "true";
+    if (signatureInput) signatureInput.value = "";
+    setNamedFieldValue(form, "signatureDataUrl", "");
+    updatePreviewImage("company-signature-logo-preview", "");
+    updateImageStatus("company-signature-logo-status", "", "Signature marked for removal. Save the profile to persist this change.");
+  });
+}
+
+function previewSelectedImage(input, previewId, statusId, message) {
+  const file = input?.files?.[0];
+  if (!file) return;
+  const previewUrl = URL.createObjectURL(file);
+  updatePreviewImage(previewId, previewUrl, () => URL.revokeObjectURL(previewUrl));
+  updateImageStatus(statusId, "", message);
+}
+
+function setNamedFieldValue(form, name, value) {
+  const field = form.querySelector(`[name="${name}"]`);
+  if (field) field.value = value;
 }
 
 async function imageFileToCompressedDataUrl(file, label) {
@@ -188,11 +287,12 @@ function loadImageBitmap(file) {
   });
 }
 
-function updatePreviewImage(elementId, url) {
+function updatePreviewImage(elementId, url, onLoad) {
   const img = document.getElementById(elementId);
   if (!img) return;
 
   if (url) {
+    if (onLoad) img.onload = onLoad;
     img.src = url;
     img.hidden = false;
   } else {
@@ -201,12 +301,12 @@ function updatePreviewImage(elementId, url) {
   }
 }
 
-function updateImageStatus(elementId, dataUrl) {
+function updateImageStatus(elementId, dataUrl, fallbackText = "No Firestore image saved yet.") {
   const element = document.getElementById(elementId);
   if (!element) return;
   element.textContent = dataUrl
     ? `Saved in Firestore (${Math.round(dataUrl.length / 1024)} KB text image)`
-    : "No Firestore image saved yet.";
+    : fallbackText;
 }
 
 document.addEventListener("DOMContentLoaded", () => {
