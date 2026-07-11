@@ -218,11 +218,16 @@
           <div class="card" style="max-width: 900px; margin: 0 auto;">
             <div class="card-title">Company Profile & Branding</div>
             <form id="company-profile-form" data-firestore-write="companyProfile">
-              <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1.5rem;">
-                <img id="company-logo-preview" data-company-logo hidden alt="Company logo preview" style="width: 72px; height: 72px; object-fit: contain; border: 1px solid var(--border); border-radius: 12px; padding: 0.35rem; background: #fff;">
+              <div class="company-profile-hero">
+                <label class="company-logo-editor" for="company-logo-file" title="Edit company logo">
+                  <img id="company-logo-preview" data-company-logo hidden alt="Company logo preview">
+                  <span class="company-logo-placeholder">🏢</span>
+                  <span class="logo-edit-badge" aria-hidden="true">✎</span>
+                </label>
                 <div>
+                  <div class="settings-eyebrow">Company Profile</div>
                   <h2 data-company-name style="color: var(--primary); margin: 0;">Lakfa ERP</h2>
-                  <p style="color: var(--text-muted); font-size: 0.875rem; margin-top: 0.25rem;">Saved in Firebase: settings/companyProfile</p>
+                  <p style="color: var(--text-muted); font-size: 0.875rem; margin-top: 0.25rem;">Saved in Firebase: settings/companyProfile. Click the pencil on the logo to edit or upload.</p>
                 </div>
               </div>
 
@@ -244,7 +249,18 @@
                 <div class="form-group"><label>Phone Number</label><input name="phone" class="form-control" placeholder="Company phone"></div>
                 <div class="form-group"><label>Email</label><input name="email" type="email" class="form-control" placeholder="company@example.com"></div>
               </div>
-              <div class="form-group"><label>Social Media Links</label><textarea name="socialLinks" class="form-control" rows="2" placeholder="Instagram, Facebook, YouTube, LinkedIn links"></textarea></div>
+              <div class="form-group">
+                <label>Social Media Links</label>
+                <div class="social-link-grid">
+                  <label class="social-input"><span class="social-icon">f</span><input name="facebookUrl" class="form-control" type="url" placeholder="Facebook page URL"></label>
+                  <label class="social-input"><span class="social-icon instagram">◎</span><input name="instagramUrl" class="form-control" type="url" placeholder="Instagram profile URL"></label>
+                  <label class="social-input"><span class="social-icon whatsapp">☘</span><input name="whatsappUrl" class="form-control" type="url" placeholder="WhatsApp link or number URL"></label>
+                  <label class="social-input"><span class="social-icon youtube">▶</span><input name="youtubeUrl" class="form-control" type="url" placeholder="YouTube channel URL"></label>
+                  <label class="social-input"><span class="social-icon linkedin">in</span><input name="linkedinUrl" class="form-control" type="url" placeholder="LinkedIn page URL"></label>
+                  <label class="social-input"><span class="social-icon x-twitter">𝕏</span><input name="xUrl" class="form-control" type="url" placeholder="X / Twitter profile URL"></label>
+                </div>
+                <textarea name="socialLinks" class="form-control" rows="2" hidden aria-hidden="true"></textarea>
+              </div>
               <div class="form-grid-2">
                 <div class="form-group">
                   <label>Company Logo</label>

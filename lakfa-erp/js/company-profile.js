@@ -11,7 +11,16 @@ const MAX_DATA_URL_BYTES = 700 * 1024;
 const MAX_IMAGE_DIMENSION = 640;
 const IMAGE_QUALITY = 0.82;
 
-const AUTH_WAIT_TIMEOUT_MS = 2500;
+const AUTH_WAIT_TIMEOUT_MS = 10000;
+
+const SOCIAL_FIELDS = [
+  "facebookUrl",
+  "instagramUrl",
+  "whatsappUrl",
+  "youtubeUrl",
+  "linkedinUrl",
+  "xUrl"
+];
 
 const COMPANY_FIELDS = [
   "companyName",
@@ -20,6 +29,7 @@ const COMPANY_FIELDS = [
   "phone",
   "email",
   "website",
+  ...SOCIAL_FIELDS,
   "socialLinks",
   "businessType",
   "businessCategory",
@@ -64,9 +74,29 @@ function normalizeCompanyProfile(profile = {}) {
     phone: profile.phone || profile.mobile || profile.contactNumber || "",
     email: profile.email || profile.companyEmail || "",
     website: profile.website || profile.websiteLink || "",
+    facebookUrl: profile.facebookUrl || findSocialLink(profile.socialLinks, "facebook") || "",
+    instagramUrl: profile.instagramUrl || findSocialLink(profile.socialLinks, "instagram") || "",
+    whatsappUrl: profile.whatsappUrl || findSocialLink(profile.socialLinks, "whatsapp") || "",
+    youtubeUrl: profile.youtubeUrl || findSocialLink(profile.socialLinks, "youtube") || "",
+    linkedinUrl: profile.linkedinUrl || findSocialLink(profile.socialLinks, "linkedin") || "",
+    xUrl: profile.xUrl || profile.twitterUrl || findSocialLink(profile.socialLinks, "twitter") || findSocialLink(profile.socialLinks, "x.com") || "",
     logoDataUrl: profile.logoDataUrl || profile.logoUrl || "",
     signatureDataUrl: profile.signatureDataUrl || profile.signatureLogoUrl || ""
   };
+}
+
+function findSocialLink(socialLinks = "", keyword) {
+  return String(socialLinks || "")
+    .split(/\n|,/)
+    .map((value) => value.trim())
+    .find((value) => value.toLowerCase().includes(keyword)) || "";
+}
+
+function buildSocialLinksSummary(data) {
+  return SOCIAL_FIELDS
+    .map((field) => data[field])
+    .filter(Boolean)
+    .join("\n");
 }
 
 export function applyCompanyProfile(profile = {}) {
@@ -120,9 +150,17 @@ export async function initCompanyProfileForm() {
   const form = document.getElementById("company-profile-form");
   if (!form) return;
 
+  if (form.dataset.companyProfileInitialized === "true") return;
+  form.dataset.companyProfileInitialized = "true";
+
   const profile = await applyCompanyProfileFromFirebase();
   populateCompanyProfileForm(form, profile);
   initCompanyImageControls(form);
+  onAuthStateChanged(auth, async (user) => {
+    if (!user) return;
+    const latestProfile = await applyCompanyProfileFromFirebase();
+    populateCompanyProfileForm(form, latestProfile);
+  });
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -201,6 +239,7 @@ function getCompanyProfileFormData(form) {
       data[field] = input.value.trim();
     }
   });
+  data.socialLinks = buildSocialLinksSummary(data);
   return data;
 }
 
@@ -295,9 +334,11 @@ function updatePreviewImage(elementId, url, onLoad) {
     if (onLoad) img.onload = onLoad;
     img.src = url;
     img.hidden = false;
+    img.closest(".company-logo-editor")?.classList.add("has-image");
   } else {
     img.removeAttribute("src");
     img.hidden = true;
+    img.closest(".company-logo-editor")?.classList.remove("has-image");
   }
 }
 
