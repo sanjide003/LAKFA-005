@@ -1,7 +1,7 @@
 /* Lakfa ERP Manager Controller */
 import { logoutUser } from "./role-guard.js";
 import { formatCurrency, formatDate, getFirebaseErrorMessage, showToast } from "./utils.js";
-import { COLLECTIONS, commitBatchOperations, createCollectionRecord, deleteCollectionRecord, getAllCollections, getDocument, saveDocument, updateCollectionRecord } from "./firebase-db.js";
+import { COLLECTIONS, commitBatchOperations, createCollectionRecord, deleteCollectionRecord, getDocument, saveDocument, subscribeCollections, updateCollectionRecord } from "./firebase-db.js";
 import { initCompanyProfileForm, loadCompanyProfile } from "./company-profile.js";
 
 // Keys mapped to Firestore collections
@@ -12,20 +12,45 @@ const KEYS = {
   purchases: "lakfa_purchases",
   inventory: "lakfa_inventory",
   production: "lakfa_production",
+  rawMaterials: "lakfa_raw_materials",
+  rawMaterialLedger: "lakfa_raw_material_ledger",
+  stockLedger: "lakfa_stock_ledger",
+  ledgerEntries: "lakfa_ledger_entries",
+  supplierLedger: "lakfa_supplier_ledger",
+  customerLedger: "lakfa_customer_ledger",
   sales: "lakfa_sales",
   orders: "lakfa_orders",
+  orderPayments: "lakfa_order_payments",
+  orderExpenses: "lakfa_order_expenses",
   delivery: "lakfa_delivery",
   expenses: "lakfa_expenses",
   income: "lakfa_income",
   cashBook: "lakfa_cashbook",
   bankBook: "lakfa_bankbook",
   investors: "lakfa_investors",
+  investorExpenses: "lakfa_investor_expenses",
+  investorPaymentRequests: "lakfa_investor_payment_requests",
+  notifications: "lakfa_notifications",
+  profitDistributions: "lakfa_profit_distributions",
+  auditLogs: "lakfa_audit_logs",
+  users: "lakfa_users",
+  employees: "lakfa_employees",
+  salaryPayments: "lakfa_salary_payments",
+  assets: "lakfa_assets",
+  managerLoans: "lakfa_manager_loans",
+  loanRepayments: "lakfa_loan_repayments",
+  financeAccounts: "lakfa_finance_accounts",
+  financeCategories: "lakfa_finance_categories",
+  financeTransfers: "lakfa_finance_transfers",
+  dailyAccounts: "lakfa_daily_accounts",
   sharing: "lakfa_sharing"
 };
 
 // Global state tracker for read-only Firestore data
 let currentEditId = null;
 let firestoreState = {};
+let realtimeSubscription = null;
+let realtimeDataReady = false;
 let activeSectionId = "dashboard";
 let activeOrderView = "pending";
 let activeDueFilter = "all";
@@ -37,14 +62,18 @@ const NOTIFICATION_DOCUMENT_KEYS = new Set([KEYS.orders, KEYS.sales, KEYS.delive
 const READ_ONLY_MESSAGE = "This module is read-only until its Firestore write workflow is enabled.";
 const WRITABLE_FORM_IDS = new Set([
   "product-form", "customer-form", "supplier-form", "investors-form",
-  "purchase-form", "inventory-form", "sales-form", "orders-form", "delivery-form",
+  "purchase-form", "inventory-form", "raw-material-form", "sales-form", "orders-form", "delivery-form",
   "expenses-form", "income-form", "cashbook-form", "bankbook-form", "production-form", "sharing-form",
-  "app-appearance-form"
+  "finance-account-form", "finance-category-form", "finance-transfer-form", "daily-account-form", "payment-request-form",
+  "employee-form", "salary-payment-form", "asset-form", "manager-loan-form", "loan-repayment-form", "staff-user-form", "print-settings-form"
 ]);
 const WRITABLE_KEYS = new Set([
   KEYS.products, KEYS.customers, KEYS.suppliers, KEYS.investors,
-  KEYS.purchases, KEYS.inventory, KEYS.sales, KEYS.orders, KEYS.delivery,
-  KEYS.expenses, KEYS.income, KEYS.cashBook, KEYS.bankBook, KEYS.production, KEYS.sharing
+  KEYS.purchases, KEYS.inventory, KEYS.rawMaterials, KEYS.sales, KEYS.orders, KEYS.delivery,
+  KEYS.expenses, KEYS.income, KEYS.cashBook, KEYS.bankBook, KEYS.production, KEYS.sharing,
+  KEYS.financeAccounts, KEYS.financeCategories, KEYS.financeTransfers, KEYS.dailyAccounts,
+  KEYS.investorExpenses, KEYS.investorPaymentRequests, KEYS.notifications, KEYS.profitDistributions, KEYS.auditLogs,
+  KEYS.employees, KEYS.salaryPayments, KEYS.assets, KEYS.managerLoans, KEYS.loanRepayments, KEYS.users
 ]);
 
 const COLLECTION_BY_KEY = {
@@ -54,15 +83,38 @@ const COLLECTION_BY_KEY = {
   [KEYS.purchases]: COLLECTIONS.purchases,
   [KEYS.inventory]: COLLECTIONS.inventory,
   [KEYS.production]: COLLECTIONS.production,
+  [KEYS.rawMaterials]: COLLECTIONS.rawMaterials,
+  [KEYS.rawMaterialLedger]: COLLECTIONS.rawMaterialLedger,
+  [KEYS.stockLedger]: COLLECTIONS.stockLedger,
+  [KEYS.ledgerEntries]: COLLECTIONS.ledgerEntries,
+  [KEYS.supplierLedger]: COLLECTIONS.supplierLedger,
+  [KEYS.customerLedger]: COLLECTIONS.customerLedger,
   [KEYS.sales]: COLLECTIONS.sales,
   [KEYS.orders]: COLLECTIONS.orders,
+  [KEYS.orderPayments]: COLLECTIONS.orderPayments,
+  [KEYS.orderExpenses]: COLLECTIONS.orderExpenses,
   [KEYS.delivery]: COLLECTIONS.delivery,
   [KEYS.expenses]: COLLECTIONS.expenses,
   [KEYS.income]: COLLECTIONS.income,
   [KEYS.cashBook]: COLLECTIONS.cashBook,
   [KEYS.bankBook]: COLLECTIONS.bankBook,
+  [KEYS.financeAccounts]: COLLECTIONS.financeAccounts,
+  [KEYS.financeCategories]: COLLECTIONS.financeCategories,
+  [KEYS.financeTransfers]: COLLECTIONS.financeTransfers,
+  [KEYS.dailyAccounts]: COLLECTIONS.dailyAccounts,
   [KEYS.investors]: COLLECTIONS.investors,
-  [KEYS.sharing]: COLLECTIONS.sharing
+  [KEYS.investorExpenses]: COLLECTIONS.investorExpenses,
+  [KEYS.investorPaymentRequests]: COLLECTIONS.investorPaymentRequests,
+  [KEYS.notifications]: COLLECTIONS.notifications,
+  [KEYS.profitDistributions]: COLLECTIONS.profitDistributions,
+  [KEYS.auditLogs]: COLLECTIONS.auditLogs,
+  [KEYS.users]: COLLECTIONS.users,
+  [KEYS.employees]: COLLECTIONS.employees,
+  [KEYS.salaryPayments]: COLLECTIONS.salaryPayments,
+  [KEYS.assets]: COLLECTIONS.assets,
+  [KEYS.managerLoans]: COLLECTIONS.managerLoans,
+  [KEYS.loanRepayments]: COLLECTIONS.loanRepayments,
+  [KEYS.sharing]: COLLECTIONS.profitDistributions
 };
 
 function getStoredRecords(key) {
@@ -77,11 +129,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   // 2. Load Firestore data for all dashboard and table renderers
   await loadFirestoreData();
 
-  // 3. Load app/module settings foundation
+  // 3. Load Firebase-backed module settings foundation
   await loadAppSettings();
-  applyAppearanceSettings();
   initModuleSettingsPanel();
-  initAppAppearanceSettings();
 
   // 4. Enable Firestore writes for approved modules
   initWritableFormListeners();
@@ -91,6 +141,14 @@ document.addEventListener("DOMContentLoaded", async () => {
   hydrateSvgIcons();
   initSidebarRouting();
   initOrderManagementUi();
+  initProductionMaterialUi();
+  initSupplierPurchaseUi();
+  initCompanyFinanceUi();
+  initInvestorRequestUi();
+  initProfitSharingAutomationUi();
+  initEmployeeSalaryUi();
+  initManagerLoansUi();
+  initSettingsAccessUi();
 
   // 6. Initialize report export actions
   initReportExportActions();
@@ -109,9 +167,27 @@ document.addEventListener("DOMContentLoaded", async () => {
 });
 
 async function loadFirestoreData() {
+  if (realtimeSubscription) return realtimeSubscription.initialLoad;
+
   try {
-    setGlobalLoading(true, "Loading Firebase ERP data...");
-    firestoreState = await getAllCollections(COLLECTION_BY_KEY);
+    setGlobalLoading(true, "Connecting to live Firebase ERP data...");
+    realtimeSubscription = subscribeCollections(
+      COLLECTION_BY_KEY,
+      (key, records) => {
+        firestoreState[key] = records;
+        if (realtimeDataReady) {
+          renderModule(activeSectionId);
+          updateDashboardMetrics();
+        }
+      },
+      (err, key, collectionName) => {
+        console.error(`Realtime listener failed for ${collectionName || key}`, err);
+        showToast(getFirebaseErrorMessage(err, `Unable to sync ${collectionName || key}.`), "error");
+      }
+    );
+
+    await realtimeSubscription.initialLoad;
+    realtimeDataReady = true;
   } catch (err) {
     console.error("Error loading Firestore data", err);
     showToast(getFirebaseErrorMessage(err, "Unable to load Firebase ERP data."), "error");
@@ -333,6 +409,169 @@ function initSidebarMobileToggle() {
   }
 }
 
+let staffUserEditId = null;
+const STAFF_PERMISSION_KEYS = ["orders", "inventory", "finance", "reports", "settings", "production", "investors"];
+
+function initSettingsAccessUi() {
+  const staffForm = document.getElementById("staff-user-form");
+  staffForm?.addEventListener("submit", saveStaffUser);
+  document.getElementById("download-all-orders-csv-btn")?.addEventListener("click", downloadAllOrdersCsv);
+  document.getElementById("print-settings-form")?.addEventListener("submit", savePrintSettings);
+}
+
+async function renderSettingsDashboard() {
+  await renderSettingsCompanySummary();
+  renderInvestorAccessList();
+  renderStaffUsersList();
+  populatePrintSettingsForm();
+}
+
+async function renderSettingsCompanySummary() {
+  const profile = await loadCompanyProfile();
+  document.querySelectorAll("[data-company-name]").forEach((el) => { el.textContent = profile.companyName || "Lakfa ERP"; });
+  document.querySelectorAll("[data-company-email]").forEach((el) => { el.textContent = profile.email || "-"; });
+  document.querySelectorAll("[data-company-phone]").forEach((el) => { el.textContent = profile.phone || "-"; });
+  const gst = document.getElementById("settings-company-gst");
+  if (gst) gst.textContent = profile.gst || "-";
+}
+
+function getStaffPermissionsFromForm() {
+  return Object.fromEntries(STAFF_PERMISSION_KEYS.map((permission) => [permission, Boolean(document.querySelector(`[data-permission="${permission}"]`)?.checked)]));
+}
+
+function setStaffPermissionToggles(permissions = {}) {
+  STAFF_PERMISSION_KEYS.forEach((permission) => {
+    const input = document.querySelector(`[data-permission="${permission}"]`);
+    if (input) input.checked = Boolean(permissions[permission]);
+  });
+}
+
+async function saveStaffUser(event) {
+  event.preventDefault();
+  const payload = {
+    name: getValue("staff-name"),
+    email: getValue("staff-email"),
+    uid: getValue("staff-uid"),
+    role: getValue("staff-role"),
+    status: getValue("staff-status"),
+    permissions: getStaffPermissionsFromForm(),
+    updatedAt: new Date().toISOString()
+  };
+  if (!payload.name || !payload.email) {
+    showToast("Please enter staff name and email.", "error");
+    return;
+  }
+  const button = document.getElementById("staff-user-submit-btn");
+  if (button) button.disabled = true;
+  try {
+    if (staffUserEditId) {
+      await updateCollectionRecord(COLLECTIONS.users, staffUserEditId, payload);
+      showToast("User access updated.", "success");
+    } else if (payload.uid) {
+      await saveDocument(COLLECTIONS.users, payload.uid, { ...payload, createdAt: new Date().toISOString() });
+      showToast("User access created with Auth UID.", "success");
+    } else {
+      await createCollectionRecord(COLLECTIONS.users, { ...payload, createdAt: new Date().toISOString() });
+      showToast("User access created.", "success");
+    }
+    staffUserEditId = null;
+    event.target.reset();
+    setStaffPermissionToggles({});
+    if (button) button.textContent = "Save User Access";
+    await refreshActiveData();
+  } catch (err) {
+    console.error("Unable to save user access", err);
+    showToast(getFirebaseErrorMessage(err, "Unable to save user access."), "error");
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
+function renderInvestorAccessList() {
+  const container = document.getElementById("settings-investor-access");
+  if (!container) return;
+  const investors = getStoredRecords(KEYS.investors);
+  container.innerHTML = `<table><thead><tr><th>Investor</th><th>Email</th><th>Capital</th><th>Status</th></tr></thead><tbody>${investors.length ? investors.map((investor) => `<tr><td>${escapeHtml(investor.name || investor.investorName || '-')}</td><td>${escapeHtml(investor.email || '-')}</td><td>${formatCurrency(investor.amount || investor.initialInvestment)}</td><td><span class="badge ${investor.status === 'inactive' ? 'badge-danger' : 'badge-success'}">${escapeHtml(investor.status || 'active')}</span></td></tr>`).join("") : `<tr><td colspan="4" class="text-center">No investor access records yet.</td></tr>`}</tbody></table>`;
+}
+
+function renderStaffUsersList() {
+  const container = document.getElementById("settings-staff-users");
+  if (!container) return;
+  const users = getStoredRecords(KEYS.users);
+  container.innerHTML = `<table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>UID</th><th>Permissions</th><th>Actions</th></tr></thead><tbody>${users.length ? users.map((user) => {
+    const permissions = Object.entries(user.permissions || {}).filter(([, enabled]) => enabled).map(([permission]) => permission).join(", ") || "-";
+    return `<tr><td>${escapeHtml(user.name || '-')}</td><td>${escapeHtml(user.email || '-')}</td><td>${escapeHtml(user.role || '-')}</td><td><span class="badge ${user.status === 'active' ? 'badge-success' : 'badge-danger'}">${escapeHtml(user.status || 'inactive')}</span></td><td>${escapeHtml(user.uid || user.id || '-')}</td><td>${escapeHtml(permissions)}</td><td class="text-right"><button class="btn-secondary btn-sm staff-edit" data-id="${user.id}">Edit</button> <button class="btn-secondary btn-sm staff-toggle" data-id="${user.id}" data-status="${user.status === 'active' ? 'inactive' : 'active'}">${user.status === 'active' ? 'Deactivate' : 'Activate'}</button></td></tr>`;
+  }).join("") : `<tr><td colspan="7" class="text-center">No staff users configured yet.</td></tr>`}</tbody></table>`;
+  container.querySelectorAll(".staff-edit").forEach((btn) => btn.addEventListener("click", () => loadStaffUserForEdit(btn.dataset.id)));
+  container.querySelectorAll(".staff-toggle").forEach((btn) => btn.addEventListener("click", () => toggleStaffUserStatus(btn.dataset.id, btn.dataset.status)));
+}
+
+function loadStaffUserForEdit(id) {
+  const user = getStoredRecords(KEYS.users).find((record) => record.id === id);
+  if (!user) return;
+  staffUserEditId = id;
+  setValue("staff-name", user.name);
+  setValue("staff-email", user.email);
+  setValue("staff-uid", user.uid || user.id);
+  setValue("staff-role", user.role);
+  setValue("staff-status", user.status);
+  setStaffPermissionToggles(user.permissions || {});
+  const button = document.getElementById("staff-user-submit-btn");
+  if (button) button.textContent = "Update User Access";
+  showToast("User access loaded for editing.", "info");
+}
+
+async function toggleStaffUserStatus(id, status) {
+  await updateCollectionRecord(COLLECTIONS.users, id, { status, updatedAt: new Date().toISOString() });
+  showToast(`User marked ${status}.`, "success");
+  await refreshActiveData();
+}
+
+async function savePrintSettings(event) {
+  event.preventDefault();
+  appSettings.print = {
+    paperSize: getValue("print-paper-size") || "A4",
+    copyCount: Math.max(1, getNumber("print-copy-count") || 1),
+    showGst: getValue("print-show-gst") || "yes",
+    footerNote: getValue("print-footer-note")
+  };
+  await saveAppSettings();
+  showToast("Print/PDF settings saved.", "success");
+}
+
+function populatePrintSettingsForm() {
+  const printSettings = appSettings.print || {};
+  setValue("print-paper-size", printSettings.paperSize || "A4");
+  setValue("print-copy-count", printSettings.copyCount || 1);
+  setValue("print-show-gst", printSettings.showGst || "yes");
+  setValue("print-footer-note", printSettings.footerNote || "");
+}
+
+function downloadAllOrdersCsv() {
+  const rows = getStoredRecords(KEYS.orders).map((order) => ({
+    id: order.id,
+    date: order.date || order.orderDate || "",
+    customer: order.customer || order.customerName || "",
+    phone: order.phone || order.customerPhone || "",
+    status: order.status || "",
+    paymentStatus: order.paymentStatus || "",
+    total: order.finalAmount || order.totalAmount || order.amount || 0
+  }));
+  if (!rows.length) {
+    showToast("No orders available for export.", "info");
+    return;
+  }
+  const headers = Object.keys(rows[0]);
+  const csv = [headers.join(","), ...rows.map((row) => headers.map((header) => csvEscape(row[header])).join(","))].join("\n");
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+  link.download = "all-orders-export.csv";
+  document.body.appendChild(link);
+  link.click();
+  URL.revokeObjectURL(link.href);
+  link.remove();
+}
+
 function initModuleSettingsPanel() {
   const settingsButton = document.getElementById("module-settings-btn");
   const modal = document.getElementById("module-settings-modal");
@@ -405,117 +644,6 @@ function closeModuleSettings() {
   document.body.style.overflow = "";
 }
 
-function initAppAppearanceSettings() {
-  const form = document.getElementById("app-appearance-form");
-  if (!form) return;
-  const settings = getAppearanceSettings();
-  setValue("appearance-theme", settings.theme);
-  setValue("appearance-header-color", settings.headerColor);
-  setValue("appearance-sidebar-color", settings.sidebarColor);
-  setValue("appearance-active-color", settings.activeColor);
-  form.addEventListener("input", (event) => {
-    if (event.target?.id === "appearance-theme") {
-      setAppearancePreset(getValue("appearance-theme"));
-    }
-    appSettings.appearance = readAppearanceForm();
-    applyAppearanceSettings();
-  });
-  form.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const button = document.getElementById("appearance-save-btn");
-    appSettings.appearance = readAppearanceForm();
-    if (button) button.disabled = true;
-    try {
-      await saveAppSettings();
-      showToast("Application settings saved to Firebase.", "success");
-    } catch (err) {
-      console.error("Unable to save application settings", err);
-      showToast(getFirebaseErrorMessage(err, "Unable to save application settings."), "error");
-    } finally {
-      if (button) button.disabled = false;
-    }
-  });
-}
-
-function readAppearanceForm() {
-  return {
-    theme: getValue("appearance-theme") || "light",
-    headerColor: getValue("appearance-header-color") || "#ffffff",
-    sidebarColor: getValue("appearance-sidebar-color") || "#ffffff",
-    activeColor: getValue("appearance-active-color") || "#0f766e"
-  };
-}
-
-function getAppearanceSettings() {
-  const preset = getAppearancePreset(appSettings.appearance?.theme || "light");
-  return {
-    theme: appSettings.appearance?.theme || preset.theme,
-    headerColor: appSettings.appearance?.headerColor || preset.headerColor,
-    sidebarColor: appSettings.appearance?.sidebarColor || preset.sidebarColor,
-    activeColor: appSettings.appearance?.activeColor || preset.activeColor
-  };
-}
-
-function applyAppearanceSettings() {
-  const settings = getAppearanceSettings();
-  const root = document.documentElement;
-  root.dataset.theme = settings.theme;
-  root.style.setProperty("--header-bg", settings.headerColor);
-  root.style.setProperty("--header-text", getReadableTextColor(settings.headerColor));
-  root.style.setProperty("--sidebar-bg", settings.sidebarColor);
-  root.style.setProperty("--sidebar-text", getReadableTextColor(settings.sidebarColor));
-  root.style.setProperty("--active-tab-bg", settings.activeColor);
-  root.style.setProperty("--active-tab-color", getReadableTextColor(settings.activeColor, settings.sidebarColor));
-}
-
-function hexToRgba(hex, alpha = 0.12) {
-  const normalized = String(hex || "#0f766e").replace("#", "");
-  const bigint = parseInt(normalized.length === 3 ? normalized.split("").map((char) => char + char).join("") : normalized, 16);
-  const r = (bigint >> 16) & 255;
-  const g = (bigint >> 8) & 255;
-  const b = bigint & 255;
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}
-
-function getAppearancePreset(theme = "light") {
-  if (theme === "dark") {
-    return {
-      theme: "dark",
-      headerColor: "#111827",
-      sidebarColor: "#0f172a",
-      activeColor: "#ef4444"
-    };
-  }
-  return {
-    theme: "light",
-    headerColor: "#dc2626",
-    sidebarColor: "#dc2626",
-    activeColor: "#ffffff"
-  };
-}
-
-function setAppearancePreset(theme) {
-  const preset = getAppearancePreset(theme);
-  setValue("appearance-header-color", preset.headerColor);
-  setValue("appearance-sidebar-color", preset.sidebarColor);
-  setValue("appearance-active-color", preset.activeColor);
-}
-
-function getReadableTextColor(backgroundHex, fallbackForLight = "#0f172a") {
-  const luminance = getHexLuminance(backgroundHex);
-  return luminance > 0.72 ? fallbackForLight : "#ffffff";
-}
-
-function getHexLuminance(hex) {
-  const normalized = String(hex || "#ffffff").replace("#", "");
-  const parsed = parseInt(normalized.length === 3 ? normalized.split("").map((char) => char + char).join("") : normalized, 16);
-  const channels = [(parsed >> 16) & 255, (parsed >> 8) & 255, parsed & 255].map((value) => {
-    const channel = value / 255;
-    return channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
-  });
-  return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
-}
-
 function getDefaultModuleSettings(sectionKey) {
   const readableKey = sectionKey.replace(/-/g, " ").toUpperCase();
   return {
@@ -585,17 +713,27 @@ function renderModule(sectionId) {
       renderTable(KEYS.customers, "customers-table-body");
       setupCustomerSearch();
       break;
+    case "parties":
+      renderPartiesDashboard();
+      break;
     case "suppliers":
       renderTable(KEYS.suppliers, "suppliers-table-body");
+      refreshSupplierPurchaseOptions();
       break;
     case "purchase":
       renderTable(KEYS.purchases, "purchase-table-body");
+      refreshSupplierPurchaseOptions();
       break;
     case "inventory":
       renderTable(KEYS.inventory, "inventory-table-body");
       break;
     case "production":
       renderTable(KEYS.production, "production-table-body");
+      refreshProductionMaterialOptions();
+      break;
+    case "raw-materials":
+      renderTable(KEYS.rawMaterials, "raw-materials-table-body");
+      refreshSupplierPurchaseOptions();
       break;
     case "sales":
       renderTable(KEYS.sales, "sales-table-body");
@@ -618,20 +756,42 @@ function renderModule(sectionId) {
     case "bankbook":
       renderBankBookTable();
       break;
+    case "company-finance":
+      renderCompanyFinanceDashboard();
+      break;
+    case "employees":
+      renderEmployeesSalaryDashboard();
+      break;
+    case "assets":
+      renderAssetsDashboard();
+      break;
+    case "manager-loans":
+      renderManagerLoansDashboard();
+      break;
     case "accounting":
       renderAccountingSummary();
       break;
     case "investors":
       renderTable(KEYS.investors, "investors-table-body");
+      refreshInvestorRequestOptions();
+      break;
+    case "payment-requests":
+      renderPaymentRequestsDashboard();
+      break;
+    case "expense-approvals":
+      renderExpenseApprovalsDashboard();
       break;
     case "investment-sharing":
-      renderTable(KEYS.sharing, "sharing-table-body");
+      renderProfitDistributionsTable();
       break;
     case "reports":
       renderAdvancedReports();
       break;
     case "gstreports":
       renderGstReports();
+      break;
+    case "settings":
+      renderSettingsDashboard();
       break;
   }
 }
@@ -686,6 +846,178 @@ function updateDashboardMetrics() {
   document.getElementById("dash-alerts").textContent = stockAlerts;
   document.getElementById("dash-production").textContent = prodBatchesCount;
   document.getElementById("dash-investor").textContent = formatCurrency(investorCap);
+  renderDashboardOrderStatusCards(orders);
+  renderDashboardOrderHistory(orders);
+  renderDashboardStockStatus(products);
+}
+
+function renderDashboardOrderStatusCards(orders = getStoredRecords(KEYS.orders)) {
+  const container = document.getElementById("dashboard-order-status-cards");
+  if (!container) return;
+  const activeOrders = orders.filter((order) => !order.deletedAt);
+  const cards = [
+    ["Pending", activeOrders.filter((order) => normalizeOrderStatus(order.orderStatus) === "pending").length],
+    ["Processing", activeOrders.filter((order) => normalizeOrderStatus(order.orderStatus) === "processing").length],
+    ["Shipped", activeOrders.filter((order) => normalizeOrderStatus(order.orderStatus) === "shipped").length],
+    ["Delivered", activeOrders.filter((order) => normalizeOrderStatus(order.orderStatus) === "delivered").length],
+    ["Payment Due", activeOrders.filter((order) => getOrderBalance(order) > 0).length],
+    ["All Active", activeOrders.length]
+  ];
+  container.innerHTML = cards.map(([label, value]) => `<div class="metric-card compact"><span>${label}</span><strong>${value}</strong></div>`).join("");
+}
+
+function renderDashboardOrderHistory(orders = getStoredRecords(KEYS.orders)) {
+  const container = document.getElementById("dashboard-order-history");
+  if (!container) return;
+  const activeOrders = orders.filter((order) => !order.deletedAt).sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
+  if (!activeOrders.length) {
+    container.innerHTML = `<p class="empty-state">No order history available.</p>`;
+    return;
+  }
+  const groups = activeOrders.reduce((acc, order) => {
+    const monthKey = (order.date || "No date").slice(0, 7) || "No date";
+    acc[monthKey] = acc[monthKey] || [];
+    acc[monthKey].push(order);
+    return acc;
+  }, {});
+  container.innerHTML = Object.entries(groups).map(([month, rows], index) => {
+    const total = rows.reduce((sum, order) => sum + getNumberFromValue(order.totalPayable), 0);
+    return `<details class="report-card" ${index === 0 ? "open" : ""}>
+      <summary><strong>${month}</strong><span>${rows.length} orders • ${formatCurrency(total)}</span></summary>
+      <div class="table-responsive"><table><thead><tr><th>Date</th><th>Customer</th><th>Status</th><th>Total</th><th>Balance</th></tr></thead><tbody>
+        ${rows.map((order) => `<tr><td>${formatDate(order.date)}</td><td>${order.customer || order.customerName || "-"}<br><small>${order.phone || ""}</small></td><td><span class="badge ${getOrderStatusBadge(order.orderStatus)}">${order.orderStatus || "Pending"}</span></td><td>${formatCurrency(order.totalPayable || order.amount || 0)}</td><td>${formatCurrency(getOrderBalance(order))}</td></tr>`).join("")}
+      </tbody></table></div>
+    </details>`;
+  }).join("");
+}
+
+function renderDashboardStockStatus(products = getStoredRecords(KEYS.products)) {
+  const container = document.getElementById("dashboard-stock-status");
+  if (!container) return;
+  if (!products.length) {
+    container.innerHTML = `<p class="empty-state">No product stock records found.</p>`;
+    return;
+  }
+  container.innerHTML = `<div class="table-responsive"><table><thead><tr><th>Product</th><th>Current Stock</th><th>Minimum</th><th>Status</th></tr></thead><tbody>
+    ${products.map((product) => {
+      const current = getNumberFromValue(product.currentStock ?? product.stock ?? product.qty);
+      const minimum = getNumberFromValue(product.minimumStock);
+      const low = current <= minimum;
+      return `<tr><td>${product.name || product.product || "-"}</td><td>${current} ${product.unit || ""}</td><td>${minimum}</td><td><span class="badge ${low ? "badge-danger" : "badge-success"}">${low ? "Low Stock" : "Available"}</span></td></tr>`;
+    }).join("")}
+  </tbody></table></div>`;
+}
+
+function getOrderPayments(orderId, order = {}) {
+  const linked = getStoredRecords(KEYS.orderPayments).filter((payment) => payment.orderId === orderId || payment.sourceId === orderId);
+  const embedded = Array.isArray(order.paymentHistory) ? order.paymentHistory : [];
+  return [...embedded, ...linked].sort((a, b) => String(b.date || b.createdAt || "").localeCompare(String(a.date || a.createdAt || "")));
+}
+
+function getOrderExpenses(orderId, order = {}) {
+  const linked = getStoredRecords(KEYS.orderExpenses).filter((expense) => expense.orderId === orderId || expense.sourceId === orderId);
+  const embedded = Array.isArray(order.expenses) ? order.expenses : [];
+  return [...embedded, ...linked].sort((a, b) => String(b.date || b.createdAt || "").localeCompare(String(a.date || a.createdAt || "")));
+}
+
+function buildPartyGroups() {
+  const groups = new Map();
+  getStoredRecords(KEYS.orders).filter((order) => !order.deletedAt).forEach((order) => {
+    const phone = String(order.phone || "").trim();
+    const name = String(order.customer || order.customerName || "Unknown Customer").trim();
+    const key = phone || name.toLowerCase();
+    if (!groups.has(key)) groups.set(key, { key, phone, name, orders: [], total: 0, balance: 0 });
+    const group = groups.get(key);
+    group.orders.push(order);
+    group.total += getNumberFromValue(order.totalPayable || order.amount);
+    group.balance += getOrderBalance(order);
+    group.lastOrder = !group.lastOrder || String(order.date || "") > String(group.lastOrder.date || "") ? order : group.lastOrder;
+  });
+  return [...groups.values()].sort((a, b) => b.orders.length - a.orders.length || String(b.lastOrder?.date || "").localeCompare(String(a.lastOrder?.date || "")));
+}
+
+function renderPartiesDashboard() {
+  const groups = buildPartyGroups();
+  const cards = document.getElementById("parties-summary-cards");
+  if (cards) {
+    const repeatCount = groups.filter((group) => group.orders.length > 1).length;
+    const receivable = groups.reduce((sum, group) => sum + group.balance, 0);
+    cards.innerHTML = [["Total Parties", groups.length], ["Repeat Parties", repeatCount], ["Receivable", formatCurrency(receivable)]].map(([label, value]) => `<div class="metric-card compact"><span>${label}</span><strong>${value}</strong></div>`).join("");
+  }
+  const tbody = document.getElementById("parties-table-body");
+  if (!tbody) return;
+  if (!groups.length) {
+    tbody.innerHTML = `<tr><td colspan="7" class="text-center">No parties found from orders.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = groups.map((group) => `<tr>
+    <td><strong>${escapeHtml(group.name)}</strong><br><small>${escapeHtml(group.phone || "No phone")}</small></td>
+    <td>${group.orders.length}</td>
+    <td>${formatDate(group.lastOrder?.date)}</td>
+    <td>${formatCurrency(group.total)}</td>
+    <td>${formatCurrency(group.balance)}</td>
+    <td>${formatCurrency(group.total - group.balance)}</td>
+    <td><button class="btn-secondary btn-sm" data-party-history="${escapeHtml(group.key)}">History</button> <button class="btn-primary btn-sm" data-party-prefill="${escapeHtml(group.key)}">New Order</button> <button class="btn-secondary btn-sm" data-party-statement="${escapeHtml(group.key)}">Statement</button></td>
+  </tr>`).join("");
+  tbody.querySelectorAll("[data-party-history]").forEach((button) => button.addEventListener("click", () => renderPartyOrderHistory(button.dataset.partyHistory)));
+  tbody.querySelectorAll("[data-party-prefill]").forEach((button) => button.addEventListener("click", () => prefillOrderFromParty(button.dataset.partyPrefill)));
+  tbody.querySelectorAll("[data-party-statement]").forEach((button) => button.addEventListener("click", () => printCustomerStatement(button.dataset.partyStatement)));
+  renderPartyOrderHistory(groups[0]?.key);
+}
+
+function getPartyGroup(key) {
+  return buildPartyGroups().find((group) => group.key === key);
+}
+
+function renderPartyOrderHistory(key) {
+  const group = getPartyGroup(key);
+  const title = document.getElementById("party-orders-title");
+  const container = document.getElementById("party-orders-history");
+  if (!container) return;
+  if (!group) { container.innerHTML = `<p class="empty-state">Select a party to view order history.</p>`; return; }
+  if (title) title.textContent = `${group.name} — Customer Order History`;
+  container.innerHTML = `<table><thead><tr><th>Date</th><th>Items</th><th>Status</th><th>Paid</th><th>Balance</th></tr></thead><tbody>
+    ${group.orders.map((order) => `<tr><td>${formatDate(order.date)}</td><td>${renderOrderItems(order)}</td><td>${order.orderStatus || "Pending"}</td><td>${formatCurrency(order.paidAmount)}</td><td>${formatCurrency(getOrderBalance(order))}</td></tr>`).join("")}
+  </tbody></table>`;
+}
+
+function prefillOrderFromParty(key) {
+  const group = getPartyGroup(key);
+  const order = group?.lastOrder;
+  if (!order) return;
+  openOrderModal();
+  setValue("ord-customer", order.customer || order.customerName);
+  setValue("ord-phone", order.phone);
+  setValue("ord-gst", order.gstNumber);
+  setValue("ord-shop", order.shopName);
+  setValue("ord-pin", order.pincode || order.pin);
+  setValue("ord-address", order.address);
+  showToast("Party details loaded into new order form.", "success");
+}
+
+function printCustomerStatement(key) {
+  const group = getPartyGroup(key);
+  if (!group) return;
+  const rows = group.orders.map((order) => `<tr><td>${formatDate(order.date)}</td><td>${renderOrderItems(order)}</td><td>${order.orderStatus || "Pending"}</td><td>${formatCurrency(order.totalPayable)}</td><td>${formatCurrency(order.paidAmount)}</td><td>${formatCurrency(getOrderBalance(order))}</td></tr>`).join("");
+  const html = `<html><head><title>Customer Statement</title><style>body{font-family:Arial,sans-serif;padding:24px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ddd;padding:8px;text-align:left}</style></head><body><h1>Customer Statement</h1><h2>${escapeHtml(group.name)}</h2><p>${escapeHtml(group.phone || "")}</p><table><thead><tr><th>Date</th><th>Items</th><th>Status</th><th>Total</th><th>Paid</th><th>Balance</th></tr></thead><tbody>${rows}</tbody></table><h3>Total Receivable: ${formatCurrency(group.balance)}</h3></body></html>`;
+  openPrintableDocument(html);
+}
+
+function printSelectedOrders() {
+  const ids = getSelectedOrderIds();
+  const orders = getStoredRecords(KEYS.orders).filter((order) => ids.includes(order.id) && !order.deletedAt);
+  if (!orders.length) { showToast("Select active orders to print.", "info"); return; }
+  const html = `<html><head><title>Selected Orders</title><style>body{font-family:Arial,sans-serif;padding:24px}.order{border:1px solid #ddd;margin:0 0 16px;padding:12px;break-inside:avoid}</style></head><body><h1>Selected Orders</h1>${orders.map((order) => `<section class="order"><h2>${escapeHtml(order.customer || order.customerName || "Order")}</h2><p>${formatDate(order.date)} • ${escapeHtml(order.phone || "")}</p><p>${renderOrderItems(order)}</p><p>Total: <strong>${formatCurrency(order.totalPayable)}</strong> Paid: ${formatCurrency(order.paidAmount)} Balance: ${formatCurrency(getOrderBalance(order))}</p><p>${escapeHtml(order.address || "")}</p></section>`).join("")}</body></html>`;
+  openPrintableDocument(html);
+}
+
+function openPrintableDocument(html) {
+  const win = window.open("", "_blank");
+  if (!win) { showToast("Popup blocked. Please allow popups to print.", "error"); return; }
+  win.document.write(html);
+  win.document.close();
+  win.focus();
+  win.print();
 }
 
 /**
@@ -732,45 +1064,58 @@ function renderTable(key, tableBodyId) {
         <td><span class="badge badge-info">${row.type}</span></td>
       `;
     } else if (key === KEYS.suppliers) {
+      const payable = getSupplierComputedPayable(row);
       cellsHTML = `
         <td><strong>${row.name}</strong><br><small style="color: var(--text-muted);">${row.id}</small></td>
         <td>${row.phone}</td>
         <td>${row.place}</td>
         <td>${row.gst || 'No GST'}</td>
         <td>${row.itemSupplied}</td>
+        <td><strong class="${payable > 0 ? 'text-danger' : ''}">${formatCurrency(payable)}</strong></td>
         <td>${row.terms}</td>
       `;
     } else if (key === KEYS.purchases) {
       cellsHTML = `
         <td>${formatDate(row.date)}</td>
         <td><strong>${row.supplier}</strong><br><small>${row.invoice}</small></td>
-        <td>${row.itemName}</td>
+        <td>${row.item || row.itemName}</td>
         <td>${row.qty} ${row.unit}</td>
         <td>${formatCurrency(row.rate)}</td>
         <td><strong>${formatCurrency(row.totalAmount)}</strong></td>
-        <td><span class="badge badge-info">${row.paymentMode}</span></td>
-        <td><span class="badge ${row.paymentStatus === 'Paid' ? 'badge-success' : row.paymentStatus === 'Pending' ? 'badge-danger' : 'badge-warning'}">${row.paymentStatus}</span></td>
+        <td><span>Paid: ${formatCurrency(row.paidAmount)}</span><br><strong class="${getNumberFromValue(row.balancePayable) > 0 ? 'text-danger' : ''}">Bal: ${formatCurrency(row.balancePayable)}</strong></td>
+        <td><span class="badge ${row.status === 'Voided' ? 'badge-danger' : row.paymentStatus === 'Paid' ? 'badge-success' : row.paymentStatus === 'Pending' ? 'badge-danger' : 'badge-warning'}">${row.status || row.paymentStatus}</span></td>
       `;
     } else if (key === KEYS.inventory) {
       cellsHTML = `
         <td><strong>${row.name}</strong><br><small>${row.id}</small></td>
-        <td><span class="badge badge-info">${row.stockType}</span></td>
+        <td><span class="badge badge-info">${row.stockType || row.type || "Stock"}</span></td>
         <td>${row.openingStock}</td>
         <td style="color: var(--success);">+${row.stockIn}</td>
         <td style="color: var(--danger);">${row.stockOut > 0 ? '-' + row.stockOut : '0'}</td>
         <td><strong>${row.currentStock}</strong> ${row.unit}</td>
-        <td>${row.minStock}</td>
+        <td>${row.minStock ?? row.minAlert ?? row.minimumStock ?? 0}</td>
         <td>${formatDate(row.lastUpdated)}</td>
+      `;
+    } else if (key === KEYS.rawMaterials) {
+      const lowStock = getNumberFromValue(row.currentStock) <= getNumberFromValue(row.minimumStock);
+      cellsHTML = `
+        <td><strong>${row.name}</strong><br><small>${row.id}</small></td>
+        <td>${row.category}</td>
+        <td><strong class="${lowStock ? 'text-danger' : ''}">${row.currentStock}</strong> / ${row.minimumStock} ${row.unit}</td>
+        <td>${formatCurrency(row.rate)}</td>
+        <td>${row.supplier || '-'}<br><small>${row.batchNumber || '-'}</small></td>
+        <td>${row.expiryDate ? formatDate(row.expiryDate) : '-'}</td>
+        <td><span class="badge ${row.status === 'Active' && !lowStock ? 'badge-success' : lowStock ? 'badge-warning' : 'badge-danger'}">${lowStock ? 'Low Stock' : row.status}</span></td>
       `;
     } else if (key === KEYS.production) {
       cellsHTML = `
-        <td><strong>${row.batchNumber}</strong><br><small>${formatDate(row.date)}</small></td>
+        <td><strong>${row.batch || row.batchNumber}</strong><br><small>${formatDate(row.date)}</small></td>
         <td>${row.productName}</td>
-        <td>${row.rawMaterial}</td>
-        <td>${row.qtyProduced}</td>
+        <td>${renderProductionMaterialsSummary(row.rawMaterials)}</td>
+        <td>${row.quantityProduced ?? row.qtyProduced}</td>
         <td>${row.packingQty}</td>
         <td style="color: var(--danger);">${row.wastage}</td>
-        <td>${formatCurrency(row.cost)}</td>
+        <td>${formatCurrency(row.batchCost ?? row.cost)}</td>
         <td>${row.staff}</td>
       `;
     } else if (key === KEYS.sales) {
@@ -841,13 +1186,14 @@ function renderTable(key, tableBodyId) {
         <td><span class="badge ${row.status === 'Active' ? 'badge-success' : 'badge-danger'}">${row.status}</span></td>
       `;
     } else if (key === KEYS.sharing) {
+      const investorSummary = (row.investorShares || []).map((share) => `${share.investorName}: ${formatCurrency(share.amount)}`).join("<br>") || row.investor || "-";
       cellsHTML = `
-        <td><strong>${row.period}</strong></td>
-        <td>${formatCurrency(row.totalProfit)}</td>
-        <td><strong>${row.investor}</strong></td>
-        <td>${row.share}%</td>
-        <td><strong>${formatCurrency(row.amount)}</strong></td>
-        <td><span class="badge ${row.status === 'Paid' ? 'badge-success' : 'badge-warning'}">${row.status}</span></td>
+        <td><strong>${row.period || `${row.fromDate || ''} - ${row.toDate || ''}`}</strong></td>
+        <td>${formatCurrency(row.netProfit ?? row.totalProfit)}</td>
+        <td>${formatCurrency(row.reserveAmount)}</td>
+        <td><strong>${formatCurrency(row.distributableProfit ?? row.amount)}</strong></td>
+        <td>${investorSummary}</td>
+        <td><span class="badge ${row.status === 'Voided' ? 'badge-danger' : row.status === 'Paid' ? 'badge-success' : 'badge-warning'}">${row.status}</span></td>
         <td>${row.date ? formatDate(row.date) : '-'}</td>
       `;
     }
@@ -861,17 +1207,34 @@ function renderTable(key, tableBodyId) {
         ? `<button class="btn-secondary btn-sm copy-notification-btn" style="padding: 0.25rem 0.5rem; margin-right: 4px;">Copy Msg</button>
            <button class="btn-secondary btn-sm whatsapp-btn" style="padding: 0.25rem 0.5rem; margin-right: 4px;">WhatsApp</button>`
         : "";
+      const supplierPayButton = key === KEYS.suppliers
+        ? `<button class="btn-primary btn-sm supplier-pay-btn" style="padding: 0.25rem 0.5rem; margin-right: 4px;">Pay</button>
+           <button class="btn-secondary btn-sm supplier-statement-btn" style="padding: 0.25rem 0.5rem; margin-right: 4px;">Statement</button>`
+        : "";
+      const profitVoidButton = key === KEYS.sharing && row.status !== "Voided"
+        ? `<button class="btn-danger btn-sm profit-void-btn" style="padding: 0.25rem 0.5rem; margin-right: 4px;">Void</button>`
+        : "";
+      const purchaseVoidButton = key === KEYS.purchases && row.status !== "Voided"
+        ? `<button class="btn-danger btn-sm purchase-void-btn" style="padding: 0.25rem 0.5rem; margin-right: 4px;">Void</button>`
+        : "";
       tr.innerHTML = `
         ${cellsHTML}
         <td class="text-right" style="white-space: nowrap;">
           ${documentButtons}
           ${notificationButtons}
+          ${supplierPayButton}
+          ${profitVoidButton}
+          ${purchaseVoidButton}
           <button class="btn-secondary btn-sm edit-btn" style="padding: 0.25rem 0.5rem; margin-right: 4px;">Edit</button>
           <button class="btn-danger btn-sm delete-btn" style="padding: 0.25rem 0.5rem;">Delete</button>
         </td>
       `;
       tr.querySelector(".edit-btn").addEventListener("click", () => loadRecordForEdit(key, row.id));
       tr.querySelector(".delete-btn").addEventListener("click", () => deleteRecord(key, row.id));
+      tr.querySelector(".supplier-pay-btn")?.addEventListener("click", () => openSupplierPaymentModal(row.id));
+      tr.querySelector(".supplier-statement-btn")?.addEventListener("click", () => openSupplierStatementModal(row.id));
+      tr.querySelector(".purchase-void-btn")?.addEventListener("click", () => voidPurchase(row.id));
+      tr.querySelector(".profit-void-btn")?.addEventListener("click", () => voidProfitDistribution(row.id));
       tr.querySelector(".print-doc-btn")?.addEventListener("click", () => printDocument(key, row.id));
       tr.querySelector(".download-doc-btn")?.addEventListener("click", () => downloadDocumentHtml(key, row.id));
       tr.querySelector(".copy-notification-btn")?.addEventListener("click", () => copyNotificationMessage(key, row.id));
@@ -920,6 +1283,7 @@ function initOrderManagementUi() {
   document.getElementById("orders-table-body")?.addEventListener("change", (event) => {
     if (event.target.matches(".order-row-select")) updateOrderBulkActions();
   });
+  document.getElementById("bulk-print-orders")?.addEventListener("click", printSelectedOrders);
   document.getElementById("bulk-restore-orders")?.addEventListener("click", () => bulkRecycleOrders("restore"));
   document.getElementById("bulk-permanent-delete-orders")?.addEventListener("click", () => bulkRecycleOrders("permanent-delete"));
   ["orders-search", "orders-from-date", "orders-to-date"].forEach((id) => {
@@ -1017,9 +1381,22 @@ function initOrderPaymentModal() {
       balanceDue: Math.max(totalPayable - paidAmount, 0),
       advanceCredit: Math.max(paidAmount - totalPayable, 0),
       paymentMode: getValue("pay-mode"),
-      paymentStatus: getValue("pay-status")
+      paymentStatus: getValue("pay-status"),
+      paymentHistory: [...(Array.isArray(order.paymentHistory) ? order.paymentHistory : []), {
+        date: new Date().toISOString().slice(0, 10),
+        amount: Math.max(paidAmount - getNumberFromValue(order.paidAmount), 0),
+        mode: getValue("pay-mode"),
+        status: getValue("pay-status"),
+        notes: "Payment modal update"
+      }].filter((payment) => getNumberFromValue(payment.amount) > 0)
     };
     await saveOrderWorkflowUpdate(id, updatedOrder, order, "Payment updated.");
+    const delta = Math.max(paidAmount - getNumberFromValue(order.paidAmount), 0);
+    if (delta > 0) {
+      await createCollectionRecord(COLLECTIONS.orderPayments, {
+        sourceId: id, orderId: id, date: new Date().toISOString().slice(0, 10), amount: delta, mode: getValue("pay-mode"), status: getValue("pay-status"), customer: order.customer || order.customerName, phone: order.phone
+      });
+    }
     closeOrderPaymentModal();
   });
 }
@@ -1259,9 +1636,11 @@ function renderOrdersManagement() {
   }
 
   records.forEach((order) => {
+    const payments = getOrderPayments(order.id, order);
+    const expenses = getOrderExpenses(order.id, order);
     const paid = getNumberFromValue(order.paidAmount);
     const balance = getOrderBalance(order);
-    const expense = getNumberFromValue(order.deliveryCharge || order.expenseTotal);
+    const expense = expenses.reduce((sum, row) => sum + getNumberFromValue(row.amount), 0) || getNumberFromValue(order.deliveryCharge || order.expenseTotal);
     const total = getNumberFromValue(order.totalPayable);
     const tr = document.createElement("tr");
     tr.dataset.id = order.id;
@@ -1271,8 +1650,8 @@ function renderOrdersManagement() {
       <td class="order-contact"><strong>${order.customer || order.customerName || "-"}</strong>${order.phone || ""}<br><small>PIN: ${order.pincode || order.pin || "-"}</small></td>
       <td>${renderOrderItems(order)}</td>
       <td><span class="badge ${getOrderStatusBadge(order.orderStatus)}">${order.orderStatus || "Pending"}</span></td>
-      <td><div class="order-money-lines"><div><span>Total</span><strong>${formatCurrency(expense)}</strong></div><div class="paid"><span>Paid</span><strong>${formatCurrency(0)}</strong></div><div class="balance"><span>Balance</span><strong>${formatCurrency(expense)}</strong></div></div></td>
-      <td><div class="order-money-lines"><div><span>Total</span><strong>${formatCurrency(total)}</strong></div><div class="paid"><span>Paid</span><strong>${formatCurrency(paid)}</strong></div><div class="balance"><span>Balance</span><strong>${formatCurrency(balance)}</strong></div></div></td>
+      <td><div class="order-money-lines"><div><span>Total</span><strong>${formatCurrency(expense)}</strong></div><div><span>Rows</span><strong>${expenses.length}</strong></div><div><small>${escapeHtml(order.expenseNote || "")}</small></div></div></td>
+      <td><div class="order-money-lines"><div><span>Total</span><strong>${formatCurrency(total)}</strong></div><div class="paid"><span>Paid</span><strong>${formatCurrency(paid)}</strong></div><div class="balance"><span>Balance</span><strong>${formatCurrency(balance)}</strong></div><div><small>${payments.length} payment history rows</small></div></div></td>
       <td>${renderOrderActions(order)}</td>
     `;
     tbody.appendChild(tr);
@@ -1375,7 +1754,13 @@ function updateOrderBulkActions() {
   const countEl = document.getElementById("selected-orders-count");
   const ids = getSelectedOrderIds();
   if (countEl) countEl.textContent = String(ids.length);
-  if (bar) bar.hidden = !(activeOrderView === "recycle-bin" && ids.length > 0);
+  if (bar) bar.hidden = ids.length === 0;
+  const printButton = document.getElementById("bulk-print-orders");
+  const restoreButton = document.getElementById("bulk-restore-orders");
+  const deleteButton = document.getElementById("bulk-permanent-delete-orders");
+  if (printButton) printButton.hidden = activeOrderView === "recycle-bin";
+  if (restoreButton) restoreButton.hidden = activeOrderView !== "recycle-bin";
+  if (deleteButton) deleteButton.hidden = activeOrderView !== "recycle-bin";
 }
 
 async function bulkRecycleOrders(action) {
@@ -1512,6 +1897,1070 @@ async function ensureCustomerFromOrder(order) {
 }
 
 
+function initSupplierPurchaseUi() {
+  ["pur-qty", "pur-rate", "pur-paid"].forEach((id) => document.getElementById(id)?.addEventListener("input", updatePurchaseTotals));
+  document.getElementById("pur-raw-material")?.addEventListener("change", handlePurchaseRawMaterialChange);
+  ["close-supplier-payment-modal-btn", "cancel-supplier-payment-modal-btn"].forEach((id) => document.getElementById(id)?.addEventListener("click", closeSupplierPaymentModal));
+  document.getElementById("supplier-payment-modal")?.addEventListener("click", (event) => {
+    if (event.target.id === "supplier-payment-modal") closeSupplierPaymentModal();
+  });
+  ["close-supplier-statement-modal-btn", "cancel-supplier-statement-modal-btn"].forEach((id) => document.getElementById(id)?.addEventListener("click", closeSupplierStatementModal));
+  document.getElementById("supplier-statement-modal")?.addEventListener("click", (event) => {
+    if (event.target.id === "supplier-statement-modal") closeSupplierStatementModal();
+  });
+  document.getElementById("supplier-payment-form")?.addEventListener("submit", submitSupplierPayment);
+  refreshSupplierPurchaseOptions();
+}
+
+function refreshSupplierPurchaseOptions() {
+  const supplierOptions = document.getElementById("supplier-options");
+  if (supplierOptions) {
+    supplierOptions.innerHTML = getStoredRecords(KEYS.suppliers).map((supplier) => `<option value="${escapeHtml(supplier.name)}"></option>`).join("");
+  }
+  const rawSelect = document.getElementById("pur-raw-material");
+  if (rawSelect) {
+    const currentValue = rawSelect.value;
+    rawSelect.innerHTML = `<option value="">Select raw material</option>` + getStoredRecords(KEYS.rawMaterials).map((material) => `
+      <option value="${escapeHtml(material.id)}" data-name="${escapeHtml(material.name)}" data-unit="${escapeHtml(material.unit || '')}" data-rate="${getNumberFromValue(material.rate)}">${escapeHtml(material.name)} (${escapeHtml(material.unit || '')})</option>
+    `).join("");
+    rawSelect.value = currentValue;
+  }
+}
+
+function handlePurchaseRawMaterialChange() {
+  const selected = document.getElementById("pur-raw-material")?.selectedOptions?.[0];
+  setValue("pur-item", selected?.dataset.name || "");
+  if (selected?.dataset.unit) setValue("pur-unit", selected.dataset.unit);
+  if (selected?.dataset.rate && !getValue("pur-rate")) setValue("pur-rate", selected.dataset.rate);
+  updatePurchaseTotals();
+}
+
+function updatePurchaseTotals() {
+  const qty = getNumber("pur-qty");
+  const rate = getNumber("pur-rate");
+  const total = qty * rate;
+  const paid = Math.min(getNumber("pur-paid"), total);
+  setValue("pur-total", total.toFixed(2));
+  setValue("pur-balance", Math.max(total - paid, 0).toFixed(2));
+  const status = document.getElementById("pur-status");
+  if (status && total > 0) {
+    status.value = paid <= 0 ? "Pending" : paid >= total ? "Paid" : "Partial";
+  }
+}
+
+function getSupplierComputedPayable(supplier) {
+  const supplierId = supplier?.id;
+  const supplierName = (supplier?.name || "").toLowerCase();
+  const ledgerTotal = getStoredRecords(KEYS.supplierLedger)
+    .filter((row) => row.supplierId === supplierId || (row.supplierName || "").toLowerCase() === supplierName)
+    .reduce((sum, row) => sum + getNumberFromValue(row.balanceDelta), 0);
+  return Math.max(ledgerTotal || getNumberFromValue(supplier?.currentPayable), 0);
+}
+
+function openSupplierPaymentModal(supplierId) {
+  const supplier = getStoredRecords(KEYS.suppliers).find((row) => row.id === supplierId);
+  if (!supplier) return;
+  setValue("supplier-pay-id", supplier.id);
+  setValue("supplier-pay-name", supplier.name);
+  setValue("supplier-pay-current", getSupplierComputedPayable(supplier).toFixed(2));
+  setValue("supplier-pay-amount", "");
+  setValue("supplier-pay-date", new Date().toISOString().slice(0, 10));
+  setValue("supplier-pay-mode", "Bank");
+  setValue("supplier-pay-ref", "");
+  setValue("supplier-pay-notes", "");
+  document.getElementById("supplier-payment-modal").hidden = false;
+  document.body.style.overflow = "hidden";
+}
+
+function closeSupplierPaymentModal() {
+  const modal = document.getElementById("supplier-payment-modal");
+  if (modal) modal.hidden = true;
+  document.body.style.overflow = "";
+}
+
+function openSupplierStatementModal(supplierId) {
+  const supplier = getStoredRecords(KEYS.suppliers).find((row) => row.id === supplierId);
+  if (!supplier) return;
+  const statementRows = getStoredRecords(KEYS.supplierLedger)
+    .filter((row) => row.supplierId === supplier.id || (row.supplierName || "").toLowerCase() === (supplier.name || "").toLowerCase())
+    .sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")));
+  const payable = getSupplierComputedPayable(supplier);
+  const debits = statementRows.reduce((sum, row) => sum + Math.max(getNumberFromValue(row.balanceDelta), 0), 0);
+  const credits = statementRows.reduce((sum, row) => sum + Math.abs(Math.min(getNumberFromValue(row.balanceDelta), 0)), 0);
+  document.getElementById("supplier-statement-title").textContent = `${supplier.name} Statement`;
+  const summary = document.getElementById("supplier-statement-summary");
+  if (summary) {
+    summary.innerHTML = `
+      <div class="summary-card"><span>Total Purchases/Opening</span><strong>${formatCurrency(debits)}</strong></div>
+      <div class="summary-card"><span>Total Payments</span><strong>${formatCurrency(credits)}</strong></div>
+      <div class="summary-card"><span>Current Payable</span><strong>${formatCurrency(payable)}</strong></div>
+    `;
+  }
+  let runningBalance = 0;
+  const body = document.getElementById("supplier-statement-body");
+  if (body) {
+    body.innerHTML = statementRows.length ? statementRows.map((row) => {
+      const delta = getNumberFromValue(row.balanceDelta);
+      runningBalance += delta;
+      return `
+        <tr>
+          <td>${row.date ? formatDate(row.date) : '-'}</td>
+          <td><span class="badge ${delta >= 0 ? 'badge-warning' : 'badge-success'}">${escapeHtml(row.type || '')}</span></td>
+          <td>${escapeHtml(row.reference || '-')}</td>
+          <td>${delta > 0 ? formatCurrency(delta) : '-'}</td>
+          <td>${delta < 0 ? formatCurrency(Math.abs(delta)) : '-'}</td>
+          <td><strong>${formatCurrency(runningBalance)}</strong></td>
+          <td>${escapeHtml(row.notes || '')}</td>
+        </tr>
+      `;
+    }).join("") : `<tr><td colspan="7" class="empty-state">No supplier ledger entries yet.</td></tr>`;
+  }
+  document.getElementById("supplier-statement-modal").hidden = false;
+  document.body.style.overflow = "hidden";
+}
+
+function closeSupplierStatementModal() {
+  const modal = document.getElementById("supplier-statement-modal");
+  if (modal) modal.hidden = true;
+  document.body.style.overflow = "";
+}
+
+async function submitSupplierPayment(event) {
+  event.preventDefault();
+  const supplier = getStoredRecords(KEYS.suppliers).find((row) => row.id === getValue("supplier-pay-id"));
+  const amount = getNumber("supplier-pay-amount");
+  if (!supplier || amount <= 0) {
+    showToast("Select a supplier and enter a valid payment amount.", "error");
+    return;
+  }
+  const currentPayable = getSupplierComputedPayable(supplier);
+  const paidAmount = Math.min(amount, currentPayable);
+  const operations = [];
+  operations.push({
+    type: "update",
+    collectionName: COLLECTIONS.suppliers,
+    id: supplier.id,
+    payload: { currentPayable: Math.max(currentPayable - paidAmount, 0), lastPaymentDate: getValue("supplier-pay-date") }
+  });
+  addSupplierLedgerOperation(operations, {
+    sourceId: `supplier-payment-${Date.now()}`,
+    supplier,
+    date: getValue("supplier-pay-date"),
+    type: "payment",
+    amount: paidAmount,
+    balanceDelta: -paidAmount,
+    reference: getValue("supplier-pay-ref") || "Supplier payment",
+    notes: getValue("supplier-pay-notes"),
+    paymentMode: getValue("supplier-pay-mode")
+  });
+  await commitBatchOperations(operations);
+  showToast("Supplier payment recorded.", "success");
+  closeSupplierPaymentModal();
+  await refreshActiveData();
+}
+
+
+
+
+
+
+
+function renderAssetsDashboard() {
+  renderAssetSummaryCards();
+  renderAssetsTable();
+}
+
+function renderAssetSummaryCards() {
+  const cards = document.getElementById("asset-summary-cards");
+  if (!cards) return;
+  const assets = getStoredRecords(KEYS.assets);
+  const activeAssets = assets.filter((asset) => !["Voided", "Sold", "Cancelled"].includes(asset.status));
+  const totalValue = activeAssets.reduce((sum, asset) => sum + getNumberFromValue(asset.purchaseValue), 0);
+  const machineryValue = activeAssets.filter((asset) => asset.type === "Machinery").reduce((sum, asset) => sum + getNumberFromValue(asset.purchaseValue), 0);
+  cards.innerHTML = reportCard("Active Assets", String(activeAssets.length), "Assets not sold/voided")
+    + reportCard("Total Asset Value", formatCurrency(totalValue), "Purchase-value basis")
+    + reportCard("Machinery Value", formatCurrency(machineryValue), "Machinery register value");
+}
+
+function renderAssetsTable() {
+  const tbody = document.getElementById("assets-table-body");
+  if (!tbody) return;
+  const assets = getStoredRecords(KEYS.assets);
+  tbody.innerHTML = assets.length ? assets.map((asset) => `
+    <tr><td><strong>${escapeHtml(asset.assetName || '')}</strong><br><small>${escapeHtml(asset.id)}</small></td><td>${escapeHtml(asset.type || '')}</td><td><strong>${formatCurrency(asset.purchaseValue)}</strong></td><td>${asset.purchaseDate ? formatDate(asset.purchaseDate) : '-'}</td><td>${escapeHtml(asset.vendor || '')}</td><td>${escapeHtml(asset.condition || '')}</td><td><span class="badge ${['Voided', 'Cancelled'].includes(asset.status) ? 'badge-danger' : asset.status === 'Sold' ? 'badge-warning' : 'badge-success'}">${escapeHtml(asset.status || 'Active')}</span></td><td class="text-right"><button class="btn-secondary btn-sm asset-edit" data-id="${asset.id}">Edit</button> ${!['Voided', 'Cancelled'].includes(asset.status) ? `<button class="btn-danger btn-sm asset-void" data-id="${asset.id}">Void/Cancel</button>` : ''} <button class="btn-danger btn-sm asset-delete" data-id="${asset.id}">Delete</button></td></tr>
+  `).join("") : `<tr><td colspan="8" class="text-center">No assets registered yet.</td></tr>`;
+  tbody.querySelectorAll(".asset-edit").forEach((btn) => btn.addEventListener("click", () => loadRecordForEdit(KEYS.assets, btn.dataset.id)));
+  tbody.querySelectorAll(".asset-void").forEach((btn) => btn.addEventListener("click", () => voidAsset(btn.dataset.id)));
+  tbody.querySelectorAll(".asset-delete").forEach((btn) => btn.addEventListener("click", () => deleteRecord(KEYS.assets, btn.dataset.id)));
+}
+
+async function voidAsset(id) {
+  const asset = getStoredRecords(KEYS.assets).find((row) => row.id === id);
+  if (!asset || asset.status === "Voided") return;
+  if (!confirm("Void/cancel this asset and reverse linked asset ledger entries?")) return;
+  await reconcileAssetLedger(null, { isDelete: true, id, previous: asset });
+  await updateCollectionRecord(COLLECTIONS.assets, id, { status: "Voided", voidedAt: new Date().toISOString() });
+  showToast("Asset voided.", "success");
+  await refreshActiveData();
+}
+
+
+function initManagerLoansUi() {
+  ["close-loan-history-modal-btn", "cancel-loan-history-modal-btn"].forEach((id) => document.getElementById(id)?.addEventListener("click", closeLoanHistoryModal));
+  document.getElementById("loan-history-modal")?.addEventListener("click", (event) => {
+    if (event.target.id === "loan-history-modal") closeLoanHistoryModal();
+  });
+  refreshLoanRepaymentOptions();
+}
+
+function refreshLoanRepaymentOptions() {
+  const select = document.getElementById("repayment-loan");
+  if (!select) return;
+  const current = select.value;
+  select.innerHTML = `<option value="">Select loan</option>` + getStoredRecords(KEYS.managerLoans)
+    .filter((loan) => !["Closed", "Voided", "Cancelled"].includes(loan.status))
+    .map((loan) => `<option value="${escapeHtml(loan.id)}">${escapeHtml(loan.lender)} - ${formatCurrency(getLoanOutstanding(loan.id))}</option>`).join("");
+  select.value = current;
+}
+
+function getLoanById(id) {
+  return getStoredRecords(KEYS.managerLoans).find((loan) => loan.id === id);
+}
+
+function getLoanRepayments(loanId) {
+  return getStoredRecords(KEYS.loanRepayments).filter((repayment) => repayment.loanId === loanId && repayment.status !== "Voided");
+}
+
+function getLoanPaidAmount(loanId) {
+  return getLoanRepayments(loanId).reduce((sum, repayment) => sum + getNumberFromValue(repayment.amount), 0);
+}
+
+function getLoanOutstanding(loanId) {
+  const loan = getLoanById(loanId);
+  if (!loan) return 0;
+  return Math.max(getNumberFromValue(loan.principalAmount) - getLoanPaidAmount(loanId), 0);
+}
+
+function renderManagerLoansDashboard() {
+  refreshLoanRepaymentOptions();
+  renderManagerLoanSummaryCards();
+  renderManagerLoansTable();
+  renderLoanRepaymentsTable();
+}
+
+function renderManagerLoanSummaryCards() {
+  const cards = document.getElementById("manager-loan-summary-cards");
+  if (!cards) return;
+  const loans = getStoredRecords(KEYS.managerLoans).filter((loan) => loan.status !== "Voided");
+  const totalPrincipal = loans.reduce((sum, loan) => sum + getNumberFromValue(loan.principalAmount), 0);
+  const totalOutstanding = loans.reduce((sum, loan) => sum + getLoanOutstanding(loan.id), 0);
+  const activeLoans = loans.filter((loan) => getLoanOutstanding(loan.id) > 0 && loan.status !== "Closed");
+  cards.innerHTML = reportCard("Active Loans", String(activeLoans.length), "Open manager loan accounts")
+    + reportCard("Principal", formatCurrency(totalPrincipal), "Total borrowed principal")
+    + reportCard("Outstanding", formatCurrency(totalOutstanding), "Principal minus repayments");
+}
+
+function renderManagerLoansTable() {
+  const tbody = document.getElementById("manager-loans-table-body");
+  if (!tbody) return;
+  const loans = getStoredRecords(KEYS.managerLoans);
+  tbody.innerHTML = loans.length ? loans.map((loan) => {
+    const paid = getLoanPaidAmount(loan.id);
+    const outstanding = getLoanOutstanding(loan.id);
+    return `<tr><td><strong>${escapeHtml(loan.lender || '')}</strong><br><small>${escapeHtml(loan.contact || '')}</small></td><td>${escapeHtml(loan.purpose || '')}</td><td><strong>${formatCurrency(loan.principalAmount)}</strong></td><td>${formatCurrency(paid)}</td><td><strong>${formatCurrency(outstanding)}</strong></td><td>${getNumberFromValue(loan.interestRate)}%</td><td>${loan.date ? formatDate(loan.date) : '-'}</td><td><span class="badge ${loan.status === 'Closed' ? 'badge-success' : loan.status === 'Voided' ? 'badge-danger' : 'badge-warning'}">${escapeHtml(loan.status || 'Active')}</span></td><td class="text-right"><button class="btn-secondary btn-sm loan-edit" data-id="${loan.id}">Edit</button> <button class="btn-secondary btn-sm loan-history" data-id="${loan.id}">History</button> <button class="btn-danger btn-sm loan-delete" data-id="${loan.id}">Delete</button></td></tr>`;
+  }).join("") : `<tr><td colspan="9" class="text-center">No manager loans recorded yet.</td></tr>`;
+  tbody.querySelectorAll(".loan-edit").forEach((btn) => btn.addEventListener("click", () => loadRecordForEdit(KEYS.managerLoans, btn.dataset.id)));
+  tbody.querySelectorAll(".loan-history").forEach((btn) => btn.addEventListener("click", () => openLoanHistoryModal(btn.dataset.id)));
+  tbody.querySelectorAll(".loan-delete").forEach((btn) => btn.addEventListener("click", () => deleteRecord(KEYS.managerLoans, btn.dataset.id)));
+}
+
+function renderLoanRepaymentsTable() {
+  const tbody = document.getElementById("loan-repayments-table-body");
+  if (!tbody) return;
+  const repayments = getStoredRecords(KEYS.loanRepayments);
+  tbody.innerHTML = repayments.length ? repayments.map((repayment) => {
+    const loan = getLoanById(repayment.loanId);
+    return `<tr><td>${repayment.date ? formatDate(repayment.date) : '-'}</td><td>${escapeHtml(repayment.loanLabel || loan?.lender || repayment.loanId || '-')}</td><td><strong>${formatCurrency(repayment.amount)}</strong></td><td>${escapeHtml(repayment.paymentMode || '')}</td><td>${escapeHtml(repayment.notes || '')}</td><td class="text-right"><button class="btn-secondary btn-sm repayment-edit" data-id="${repayment.id}">Edit</button> <button class="btn-danger btn-sm repayment-delete" data-id="${repayment.id}">Delete</button></td></tr>`;
+  }).join("") : `<tr><td colspan="6" class="text-center">No loan repayments yet.</td></tr>`;
+  tbody.querySelectorAll(".repayment-edit").forEach((btn) => btn.addEventListener("click", () => loadRecordForEdit(KEYS.loanRepayments, btn.dataset.id)));
+  tbody.querySelectorAll(".repayment-delete").forEach((btn) => btn.addEventListener("click", () => deleteRecord(KEYS.loanRepayments, btn.dataset.id)));
+}
+
+function openLoanHistoryModal(loanId) {
+  const loan = getLoanById(loanId);
+  if (!loan) return;
+  const rows = getLoanRepayments(loanId);
+  document.getElementById("loan-history-title").textContent = `${loan.lender} Loan History`;
+  const table = document.getElementById("loan-history-table");
+  if (table) {
+    table.innerHTML = `<table><thead><tr><th>Date</th><th>Amount</th><th>Mode</th><th>Notes</th></tr></thead><tbody>${rows.length ? rows.map((row) => `<tr><td>${row.date ? formatDate(row.date) : '-'}</td><td>${formatCurrency(row.amount)}</td><td>${escapeHtml(row.paymentMode || '')}</td><td>${escapeHtml(row.notes || '')}</td></tr>`).join("") : `<tr><td colspan="4" class="text-center">No repayments for this loan.</td></tr>`}</tbody></table><div class="card-footer">Outstanding: ${formatCurrency(getLoanOutstanding(loanId))}</div>`;
+  }
+  document.getElementById("loan-history-modal").hidden = false;
+  document.body.style.overflow = "hidden";
+}
+
+function closeLoanHistoryModal() {
+  const modal = document.getElementById("loan-history-modal");
+  if (modal) modal.hidden = true;
+  document.body.style.overflow = "";
+}
+
+
+function initEmployeeSalaryUi() {
+  ["close-salary-history-modal-btn", "cancel-salary-history-modal-btn"].forEach((id) => document.getElementById(id)?.addEventListener("click", closeSalaryHistoryModal));
+  document.getElementById("salary-history-modal")?.addEventListener("click", (event) => {
+    if (event.target.id === "salary-history-modal") closeSalaryHistoryModal();
+  });
+  refreshSalaryEmployeeOptions();
+}
+
+function refreshSalaryEmployeeOptions() {
+  const select = document.getElementById("salary-employee");
+  if (!select) return;
+  const current = select.value;
+  select.innerHTML = `<option value="">Select employee</option>` + getStoredRecords(KEYS.employees)
+    .filter((employee) => employee.status !== "Inactive")
+    .map((employee) => `<option value="${escapeHtml(employee.id)}">${escapeHtml(employee.name)} - ${escapeHtml(employee.role || '')}</option>`).join("");
+  select.value = current;
+}
+
+function getEmployeeById(id) {
+  return getStoredRecords(KEYS.employees).find((employee) => employee.id === id);
+}
+
+function renderEmployeesSalaryDashboard() {
+  refreshSalaryEmployeeOptions();
+  renderEmployeesTable();
+  renderSalaryPaymentsTable();
+}
+
+function renderEmployeesTable() {
+  const tbody = document.getElementById("employees-table-body");
+  if (!tbody) return;
+  const employees = getStoredRecords(KEYS.employees);
+  tbody.innerHTML = employees.length ? employees.map((employee) => `
+    <tr><td><strong>${escapeHtml(employee.name)}</strong><br><small>${escapeHtml(employee.phone || '')}</small></td><td>${escapeHtml(employee.role || '')}</td><td>${escapeHtml(employee.salaryType || '')}<br><strong>${formatCurrency(employee.salaryRate)}</strong></td><td>${employee.joiningDate ? formatDate(employee.joiningDate) : '-'}</td><td><span class="badge ${employee.status === 'Active' ? 'badge-success' : 'badge-danger'}">${escapeHtml(employee.status || 'Active')}</span></td><td>${escapeHtml(employee.notes || '')}</td><td class="text-right"><button class="btn-secondary btn-sm employee-edit" data-id="${employee.id}">Edit</button> <button class="btn-secondary btn-sm employee-history" data-id="${employee.id}">History</button> <button class="btn-danger btn-sm employee-delete" data-id="${employee.id}">Delete</button></td></tr>
+  `).join("") : `<tr><td colspan="7" class="text-center">No employees yet.</td></tr>`;
+  tbody.querySelectorAll(".employee-edit").forEach((btn) => btn.addEventListener("click", () => loadRecordForEdit(KEYS.employees, btn.dataset.id)));
+  tbody.querySelectorAll(".employee-history").forEach((btn) => btn.addEventListener("click", () => openSalaryHistoryModal(btn.dataset.id)));
+  tbody.querySelectorAll(".employee-delete").forEach((btn) => btn.addEventListener("click", () => deleteRecord(KEYS.employees, btn.dataset.id)));
+}
+
+function renderSalaryPaymentsTable() {
+  const tbody = document.getElementById("salary-payments-table-body");
+  if (!tbody) return;
+  const payments = getStoredRecords(KEYS.salaryPayments);
+  tbody.innerHTML = payments.length ? payments.map((payment) => `
+    <tr><td>${payment.paymentDate ? formatDate(payment.paymentDate) : '-'}</td><td>${escapeHtml(payment.employeeName || getEmployeeById(payment.employeeId)?.name || '-')}</td><td>${escapeHtml(payment.period || '')}</td><td><strong>${formatCurrency(payment.amount)}</strong></td><td>${escapeHtml(payment.paymentMode || '')}</td><td><span class="badge ${payment.status === 'Voided' ? 'badge-danger' : payment.status === 'Paid' ? 'badge-success' : 'badge-warning'}">${escapeHtml(payment.status || 'Paid')}</span></td><td>${escapeHtml(payment.notes || '')}</td><td class="text-right"><button class="btn-secondary btn-sm salary-edit" data-id="${payment.id}">Edit</button> ${payment.status !== 'Voided' ? `<button class="btn-danger btn-sm salary-void" data-id="${payment.id}">Void</button>` : ''} <button class="btn-danger btn-sm salary-delete" data-id="${payment.id}">Delete</button></td></tr>
+  `).join("") : `<tr><td colspan="8" class="text-center">No salary payments yet.</td></tr>`;
+  tbody.querySelectorAll(".salary-edit").forEach((btn) => btn.addEventListener("click", () => loadRecordForEdit(KEYS.salaryPayments, btn.dataset.id)));
+  tbody.querySelectorAll(".salary-void").forEach((btn) => btn.addEventListener("click", () => voidSalaryPayment(btn.dataset.id)));
+  tbody.querySelectorAll(".salary-delete").forEach((btn) => btn.addEventListener("click", () => deleteRecord(KEYS.salaryPayments, btn.dataset.id)));
+}
+
+function openSalaryHistoryModal(employeeId) {
+  const employee = getEmployeeById(employeeId);
+  if (!employee) return;
+  const rows = getStoredRecords(KEYS.salaryPayments).filter((payment) => payment.employeeId === employeeId);
+  document.getElementById("salary-history-title").textContent = `${employee.name} Salary History`;
+  const table = document.getElementById("salary-history-table");
+  if (table) {
+    table.innerHTML = `<table><thead><tr><th>Date</th><th>Period</th><th>Amount</th><th>Mode</th><th>Status</th><th>Notes</th></tr></thead><tbody>${rows.length ? rows.map((row) => `<tr><td>${row.paymentDate ? formatDate(row.paymentDate) : '-'}</td><td>${escapeHtml(row.period || '')}</td><td>${formatCurrency(row.amount)}</td><td>${escapeHtml(row.paymentMode || '')}</td><td>${escapeHtml(row.status || '')}</td><td>${escapeHtml(row.notes || '')}</td></tr>`).join("") : `<tr><td colspan="6" class="text-center">No salary payments for this employee.</td></tr>`}</tbody></table>`;
+  }
+  document.getElementById("salary-history-modal").hidden = false;
+  document.body.style.overflow = "hidden";
+}
+
+function closeSalaryHistoryModal() {
+  const modal = document.getElementById("salary-history-modal");
+  if (modal) modal.hidden = true;
+  document.body.style.overflow = "";
+}
+
+async function voidSalaryPayment(id) {
+  const payment = getStoredRecords(KEYS.salaryPayments).find((row) => row.id === id);
+  if (!payment || payment.status === "Voided") return;
+  if (!confirm("Void this salary payment and reverse expenses/ledger/cash-bank entries?")) return;
+  await reconcileSalaryPayment(null, { isDelete: true, id, previous: payment });
+  await updateCollectionRecord(COLLECTIONS.salaryPayments, id, { status: "Voided", voidedAt: new Date().toISOString() });
+  showToast("Salary payment voided.", "success");
+  await refreshActiveData();
+}
+
+
+
+let currentProfitDistributionPreview = null;
+
+function initProfitSharingAutomationUi() {
+  document.getElementById("profit-preview-btn")?.addEventListener("click", () => {
+    currentProfitDistributionPreview = calculateProfitDistributionPreview();
+    renderProfitSharingPreview(currentProfitDistributionPreview);
+  });
+}
+
+function isWithinDateRange(row, fromDate, toDate) {
+  const date = String(row.date || row.createdAt || "").slice(0, 10);
+  if (!date) return false;
+  return (!fromDate || date >= fromDate) && (!toDate || date <= toDate);
+}
+
+function sumByDate(records, fromDate, toDate, amountGetter) {
+  return records.filter((row) => isWithinDateRange(row, fromDate, toDate) && row.status !== "Voided").reduce((sum, row) => sum + getNumberFromValue(amountGetter(row)), 0);
+}
+
+function calculateProfitDistributionPreview() {
+  const fromDate = getValue("shr-from-date");
+  const toDate = getValue("shr-to-date");
+  const salesIncome = sumByDate(getStoredRecords(KEYS.sales), fromDate, toDate, (row) => row.finalAmount || row.totalAmount);
+  const otherIncome = sumByDate(getStoredRecords(KEYS.income), fromDate, toDate, (row) => row.amount);
+  const dailyIncome = sumByDate(getStoredRecords(KEYS.dailyAccounts), fromDate, toDate, (row) => row.type === "Income" ? row.amount : 0);
+  const purchaseCost = sumByDate(getStoredRecords(KEYS.purchases), fromDate, toDate, (row) => row.totalAmount);
+  const operatingExpense = sumByDate(getStoredRecords(KEYS.expenses), fromDate, toDate, (row) => row.amount);
+  const dailyExpense = sumByDate(getStoredRecords(KEYS.dailyAccounts), fromDate, toDate, (row) => row.type === "Expense" ? row.amount : 0);
+  const grossIncome = salesIncome + otherIncome + dailyIncome;
+  const totalExpense = purchaseCost + operatingExpense + dailyExpense;
+  const netProfit = Math.max(grossIncome - totalExpense, 0);
+  const reservePercentage = getNumber("shr-reserve-percentage");
+  const reserveAmount = Math.min(netProfit, getNumber("shr-reserve-amount") + ((netProfit * reservePercentage) / 100));
+  const distributableProfit = Math.max(netProfit - reserveAmount, 0);
+  const investors = getStoredRecords(KEYS.investors).filter((investor) => investor.status !== "Inactive" && getNumberFromValue(investor.share) > 0);
+  const investorShares = investors.map((investor) => ({
+    investorId: investor.id,
+    investorName: investor.name,
+    investorEmail: investor.email || "",
+    sharePercentage: getNumberFromValue(investor.share),
+    amount: (distributableProfit * getNumberFromValue(investor.share)) / 100
+  })).filter((row) => row.amount > 0);
+  return {
+    fromDate,
+    toDate,
+    period: `${fromDate || "Start"} to ${toDate || "End"}`,
+    salesIncome,
+    otherIncome,
+    dailyIncome,
+    grossIncome,
+    purchaseCost,
+    operatingExpense,
+    dailyExpense,
+    totalExpense,
+    netProfit,
+    reservePercentage,
+    reserveAmount,
+    distributableProfit,
+    investorShares,
+    status: getValue("shr-status") || "Pending",
+    date: getValue("shr-date") || new Date().toISOString().slice(0, 10),
+    notes: getValue("shr-notes")
+  };
+}
+
+function renderProfitSharingPreview(preview) {
+  const container = document.getElementById("profit-sharing-preview");
+  if (!container || !preview) return;
+  const rows = preview.investorShares.map((share) => `<tr><td>${escapeHtml(share.investorName)}</td><td>${share.sharePercentage}%</td><td><strong>${formatCurrency(share.amount)}</strong></td></tr>`).join("");
+  container.innerHTML = `
+    <table>
+      <tbody>
+        <tr><td>Gross Income</td><td>${formatCurrency(preview.grossIncome)}</td></tr>
+        <tr><td>Total Expense</td><td>${formatCurrency(preview.totalExpense)}</td></tr>
+        <tr><td>Net Profit</td><td><strong>${formatCurrency(preview.netProfit)}</strong></td></tr>
+        <tr><td>Reserve</td><td>${formatCurrency(preview.reserveAmount)}</td></tr>
+        <tr><td>Distributable Profit</td><td><strong>${formatCurrency(preview.distributableProfit)}</strong></td></tr>
+      </tbody>
+    </table>
+    <table><thead><tr><th>Investor</th><th>Share %</th><th>Distribution</th></tr></thead><tbody>${rows || `<tr><td colspan="3" class="text-center">No active investor shares configured.</td></tr>`}</tbody></table>
+  `;
+}
+
+function getProfitDistributionFormData() {
+  const preview = calculateProfitDistributionPreview();
+  currentProfitDistributionPreview = preview;
+  renderProfitSharingPreview(preview);
+  return preview;
+}
+
+function renderProfitDistributionsTable() {
+  renderTable(KEYS.sharing, "sharing-table-body");
+}
+
+async function voidProfitDistribution(id) {
+  const distribution = getStoredRecords(KEYS.sharing).find((row) => row.id === id);
+  if (!distribution || distribution.status === "Voided") return;
+  if (!confirm("Void this profit distribution and reverse linked investor entries/ledger?")) return;
+  await reconcileProfitSharingLedger({ ...distribution, status: "Voided" }, { id, previous: distribution, isVoid: true });
+  await updateCollectionRecord(COLLECTIONS.profitDistributions, id, { status: "Voided", voidedAt: new Date().toISOString() });
+  showToast("Profit distribution voided.", "success");
+  await refreshActiveData();
+}
+
+
+
+let paymentRequestEditId = null;
+
+function initInvestorRequestUi() {
+  document.getElementById("payment-request-form")?.addEventListener("submit", saveInvestorPaymentRequest);
+  refreshInvestorRequestOptions();
+}
+
+function refreshInvestorRequestOptions() {
+  const select = document.getElementById("payreq-target");
+  if (!select) return;
+  const value = select.value;
+  select.innerHTML = `<option value="all">All Investors</option>` + getStoredRecords(KEYS.investors).map((investor) => `<option value="${escapeHtml(investor.id)}">${escapeHtml(investor.name)} (${escapeHtml(investor.email || '')})</option>`).join("");
+  select.value = value || "all";
+}
+
+function getInvestorById(id) {
+  return getStoredRecords(KEYS.investors).find((investor) => investor.id === id);
+}
+
+async function saveInvestorPaymentRequest(event) {
+  event.preventDefault();
+  const targetValue = getValue("payreq-target") || "all";
+  const targetInvestor = targetValue === "all" ? null : getInvestorById(targetValue);
+  const data = {
+    targetInvestor: targetValue === "all" ? "all" : targetInvestor?.id,
+    targetInvestorId: targetValue === "all" ? "all" : targetInvestor?.id,
+    targetInvestorName: targetValue === "all" ? "All Investors" : targetInvestor?.name,
+    targetInvestorEmail: targetValue === "all" ? "" : targetInvestor?.email,
+    amount: getNumber("payreq-amount"),
+    purpose: getValue("payreq-purpose"),
+    dueDate: getValue("payreq-due"),
+    status: getValue("payreq-status") || "Open",
+    notes: getValue("payreq-notes")
+  };
+  if (!data.targetInvestor || !data.purpose || data.amount <= 0 || !data.dueDate) return showToast("Complete payment request fields.", "error");
+  const id = paymentRequestEditId
+    ? (await updateCollectionRecord(COLLECTIONS.investorPaymentRequests, paymentRequestEditId, data), paymentRequestEditId)
+    : await createCollectionRecord(COLLECTIONS.investorPaymentRequests, data);
+  await createInvestorNotificationsForPaymentRequest(id, data);
+  paymentRequestEditId = null;
+  document.getElementById("payment-request-form")?.reset();
+  showToast("Investor payment request saved.", "success");
+  await refreshActiveData();
+}
+
+async function createInvestorNotificationsForPaymentRequest(requestId, request) {
+  const targets = request.targetInvestorId === "all" ? getStoredRecords(KEYS.investors) : [getInvestorById(request.targetInvestorId)].filter(Boolean);
+  const operations = targets.map((investor) => ({ type: "set", collectionName: COLLECTIONS.notifications, payload: {
+    userId: investor.userId || "", investorId: investor.id, investorEmail: investor.email || "", type: "payment-request", title: "New payment request", message: `${request.purpose} - ${formatCurrency(request.amount)} due ${request.dueDate}`, sourceId: requestId, read: false, status: "unread", createdForRole: "investor"
+  }}));
+  if (operations.length) await commitBatchOperations(operations);
+}
+
+function renderPaymentRequestsDashboard() {
+  refreshInvestorRequestOptions();
+  const tbody = document.getElementById("payment-requests-table-body");
+  if (!tbody) return;
+  const requests = getStoredRecords(KEYS.investorPaymentRequests);
+  tbody.innerHTML = requests.length ? requests.map((request) => `<tr><td>${escapeHtml(request.targetInvestorName || request.targetInvestor || 'All Investors')}</td><td><strong>${formatCurrency(request.amount)}</strong></td><td>${escapeHtml(request.purpose)}</td><td>${request.dueDate ? formatDate(request.dueDate) : '-'}</td><td><span class="badge ${request.status === 'Open' ? 'badge-warning' : request.status === 'Closed' ? 'badge-success' : 'badge-danger'}">${escapeHtml(request.status || 'Open')}</span></td><td class="text-right"><button class="btn-secondary btn-sm payreq-edit" data-id="${request.id}">Edit</button> <button class="btn-danger btn-sm payreq-delete" data-id="${request.id}">Delete</button></td></tr>`).join("") : `<tr><td colspan="6" class="text-center">No investor payment requests yet.</td></tr>`;
+  tbody.querySelectorAll(".payreq-edit").forEach((button) => button.addEventListener("click", () => editInvestorPaymentRequest(button.dataset.id)));
+  tbody.querySelectorAll(".payreq-delete").forEach((button) => button.addEventListener("click", () => deleteInvestorPaymentRequest(button.dataset.id)));
+}
+
+function editInvestorPaymentRequest(id) {
+  const request = getStoredRecords(KEYS.investorPaymentRequests).find((row) => row.id === id);
+  if (!request) return;
+  paymentRequestEditId = id;
+  setValue("payreq-target", request.targetInvestorId || request.targetInvestor || "all");
+  setValue("payreq-amount", request.amount); setValue("payreq-purpose", request.purpose); setValue("payreq-due", request.dueDate); setValue("payreq-status", request.status || "Open"); setValue("payreq-notes", request.notes);
+}
+
+async function deleteInvestorPaymentRequest(id) {
+  if (!confirm("Delete this investor payment request?")) return;
+  await deleteCollectionRecord(COLLECTIONS.investorPaymentRequests, id);
+  showToast("Payment request deleted.", "success");
+  await refreshActiveData();
+}
+
+function renderExpenseApprovalsDashboard() {
+  const tbody = document.getElementById("expense-approvals-table-body");
+  if (!tbody) return;
+  const requests = getStoredRecords(KEYS.investorExpenses);
+  const pending = requests.filter((request) => (request.status || "pending").toLowerCase() === "pending");
+  const approved = requests.filter((request) => (request.status || "").toLowerCase() === "approved");
+  const summary = document.getElementById("expense-approval-summary");
+  if (summary) summary.innerHTML = `<div class="dashboard-card"><div class="card-header">Pending</div><div class="card-value">${pending.length}</div></div><div class="dashboard-card"><div class="card-header">Approved Contributions</div><div class="card-value">${formatCurrency(approved.reduce((s,r)=>s+getNumberFromValue(r.amount),0))}</div></div>`;
+  tbody.innerHTML = requests.length ? requests.map((request) => {
+    const status = (request.status || "pending").toLowerCase();
+    return `<tr><td>${request.date ? formatDate(request.date) : '-'}</td><td>${escapeHtml(request.investorName || request.investorEmail || '-')}</td><td>${escapeHtml(request.purpose || '-')}</td><td><strong>${formatCurrency(request.amount)}</strong></td><td><span class="badge ${status === 'approved' ? 'badge-success' : status === 'rejected' ? 'badge-danger' : 'badge-warning'}">${escapeHtml(request.status || 'pending')}</span></td><td>${escapeHtml(request.notes || '')}</td><td class="text-right">${status === 'pending' ? `<button class="btn-primary btn-sm approval-approve" data-id="${request.id}">Approve</button> <button class="btn-danger btn-sm approval-reject" data-id="${request.id}">Reject</button>` : 'Completed'}</td></tr>`;
+  }).join("") : `<tr><td colspan="7" class="text-center">No investor expense requests yet.</td></tr>`;
+  tbody.querySelectorAll(".approval-approve").forEach((button) => button.addEventListener("click", () => approveInvestorExpense(button.dataset.id)));
+  tbody.querySelectorAll(".approval-reject").forEach((button) => button.addEventListener("click", () => rejectInvestorExpense(button.dataset.id)));
+}
+
+async function approveInvestorExpense(id) {
+  const request = getStoredRecords(KEYS.investorExpenses).find((row) => row.id === id);
+  if (!request) return;
+  const investor = getInvestorById(request.investorId) || getStoredRecords(KEYS.investors).find((row) => row.email === request.investorEmail);
+  const operations = [{ type: "update", collectionName: COLLECTIONS.investorExpenses, id, payload: { status: "approved", approvedAt: new Date().toISOString(), approvedAmount: getNumberFromValue(request.amount) } }];
+  if (investor?.id) operations.push({ type: "update", collectionName: COLLECTIONS.investors, id: investor.id, payload: { amount: getNumberFromValue(investor.amount) + getNumberFromValue(request.amount), lastContributionAt: new Date().toISOString() } });
+  operations.push({ type: "set", collectionName: COLLECTIONS.notifications, payload: { investorId: request.investorId || investor?.id || "", investorEmail: request.investorEmail || investor?.email || "", type: "expense-approved", title: "Contribution approved", message: `${request.purpose} approved for ${formatCurrency(request.amount)}`, sourceId: id, read: false, status: "unread", createdForRole: "investor" } });
+  await commitBatchOperations(operations);
+  showToast("Investor contribution approved.", "success");
+  await refreshActiveData();
+}
+
+async function rejectInvestorExpense(id) {
+  const request = getStoredRecords(KEYS.investorExpenses).find((row) => row.id === id);
+  if (!request) return;
+  await commitBatchOperations([
+    { type: "update", collectionName: COLLECTIONS.investorExpenses, id, payload: { status: "rejected", rejectedAt: new Date().toISOString() } },
+    { type: "set", collectionName: COLLECTIONS.notifications, payload: { investorId: request.investorId || "", investorEmail: request.investorEmail || "", type: "expense-rejected", title: "Contribution rejected", message: `${request.purpose} was rejected`, sourceId: id, read: false, status: "unread", createdForRole: "investor" } }
+  ]);
+  showToast("Investor contribution rejected.", "success");
+  await refreshActiveData();
+}
+
+
+
+const financeEditIds = { account: null, category: null, transfer: null, daily: null };
+
+function initCompanyFinanceUi() {
+  document.getElementById("finance-account-form")?.addEventListener("submit", saveFinanceAccount);
+  document.getElementById("finance-category-form")?.addEventListener("submit", saveFinanceCategory);
+  document.getElementById("finance-transfer-form")?.addEventListener("submit", saveFinanceTransfer);
+  document.getElementById("daily-account-form")?.addEventListener("submit", saveDailyAccount);
+  document.getElementById("daily-type")?.addEventListener("change", refreshFinanceOptions);
+  ["finance-filter-from", "finance-filter-to", "finance-filter-account", "finance-filter-category"].forEach((id) => {
+    document.getElementById(id)?.addEventListener("change", renderCompanyFinanceDashboard);
+  });
+  document.getElementById("finance-clear-filters-btn")?.addEventListener("click", () => {
+    ["finance-filter-from", "finance-filter-to", "finance-filter-account", "finance-filter-category"].forEach((id) => setValue(id, ""));
+    renderCompanyFinanceDashboard();
+  });
+  refreshFinanceOptions();
+}
+
+function getAccountName(accountId) {
+  return getStoredRecords(KEYS.financeAccounts).find((account) => account.id === accountId)?.accountName || "-";
+}
+
+function getCategoryName(categoryId) {
+  return getStoredRecords(KEYS.financeCategories).find((category) => category.id === categoryId)?.categoryName || "-";
+}
+
+function getFinanceAccountBalance(account) {
+  if (!account) return 0;
+  const opening = getNumberFromValue(account.openingBalance);
+  const dailyDelta = getStoredRecords(KEYS.dailyAccounts)
+    .filter((entry) => entry.accountId === account.id && entry.status !== "Voided")
+    .reduce((sum, entry) => sum + (entry.type === "Income" ? getNumberFromValue(entry.amount) : -getNumberFromValue(entry.amount)), 0);
+  const transferDelta = getStoredRecords(KEYS.financeTransfers)
+    .filter((entry) => entry.status !== "Voided")
+    .reduce((sum, entry) => {
+      if (entry.fromAccountId === account.id) return sum - getNumberFromValue(entry.amount);
+      if (entry.toAccountId === account.id) return sum + getNumberFromValue(entry.amount);
+      return sum;
+    }, 0);
+  return opening + dailyDelta + transferDelta;
+}
+
+function refreshFinanceOptions() {
+  const accounts = getStoredRecords(KEYS.financeAccounts).filter((account) => account.status !== "Inactive");
+  const categories = getStoredRecords(KEYS.financeCategories).filter((category) => category.status !== "Inactive");
+  const accountOptions = `<option value="">Select account</option>` + accounts.map((account) => `<option value="${escapeHtml(account.id)}">${escapeHtml(account.accountName)} (${escapeHtml(account.type || '')})</option>`).join("");
+  ["daily-account", "fin-transfer-from", "fin-transfer-to"].forEach((id) => {
+    const select = document.getElementById(id);
+    if (!select) return;
+    const value = select.value;
+    select.innerHTML = accountOptions;
+    select.value = value;
+  });
+  const filterAccount = document.getElementById("finance-filter-account");
+  if (filterAccount) {
+    const value = filterAccount.value;
+    filterAccount.innerHTML = `<option value="">All Accounts</option>` + accounts.map((account) => `<option value="${escapeHtml(account.id)}">${escapeHtml(account.accountName)}</option>`).join("");
+    filterAccount.value = value;
+  }
+  const selectedType = getValue("daily-type") || "Income";
+  const categoryOptions = `<option value="">Select category</option>` + categories
+    .filter((category) => category.type === selectedType)
+    .map((category) => `<option value="${escapeHtml(category.id)}">${escapeHtml(category.categoryName)}</option>`).join("");
+  const dailyCategory = document.getElementById("daily-category");
+  if (dailyCategory) {
+    const value = dailyCategory.value;
+    dailyCategory.innerHTML = categoryOptions;
+    dailyCategory.value = value;
+  }
+  const filterCategory = document.getElementById("finance-filter-category");
+  if (filterCategory) {
+    const value = filterCategory.value;
+    filterCategory.innerHTML = `<option value="">All Categories</option>` + categories.map((category) => `<option value="${escapeHtml(category.id)}">${escapeHtml(category.categoryName)} (${escapeHtml(category.type)})</option>`).join("");
+    filterCategory.value = value;
+  }
+}
+
+function passesFinanceFilters(record) {
+  const from = getValue("finance-filter-from");
+  const to = getValue("finance-filter-to");
+  const accountId = getValue("finance-filter-account");
+  const categoryId = getValue("finance-filter-category");
+  if (from && String(record.date || "") < from) return false;
+  if (to && String(record.date || "") > to) return false;
+  if (accountId && record.accountId !== accountId && record.fromAccountId !== accountId && record.toAccountId !== accountId) return false;
+  if (categoryId && record.categoryId !== categoryId) return false;
+  return true;
+}
+
+function renderCompanyFinanceDashboard() {
+  refreshFinanceOptions();
+  const accounts = getStoredRecords(KEYS.financeAccounts);
+  const categories = getStoredRecords(KEYS.financeCategories);
+  const daily = getStoredRecords(KEYS.dailyAccounts).filter(passesFinanceFilters);
+  const transfers = getStoredRecords(KEYS.financeTransfers).filter(passesFinanceFilters);
+  const totalIncome = daily.filter((entry) => entry.type === "Income" && entry.status !== "Voided").reduce((sum, entry) => sum + getNumberFromValue(entry.amount), 0);
+  const totalExpense = daily.filter((entry) => entry.type === "Expense" && entry.status !== "Voided").reduce((sum, entry) => sum + getNumberFromValue(entry.amount), 0);
+  const totalCash = accounts.filter((account) => account.type === "Cash").reduce((sum, account) => sum + getFinanceAccountBalance(account), 0);
+  const totalBank = accounts.filter((account) => ["Bank", "UPI", "Card"].includes(account.type)).reduce((sum, account) => sum + getFinanceAccountBalance(account), 0);
+  const cards = document.getElementById("finance-balance-cards");
+  if (cards) {
+    cards.innerHTML = `
+      <div class="dashboard-card"><div class="card-header">Total Income</div><div class="card-value">${formatCurrency(totalIncome)}</div><div class="card-footer">Filtered daily accounts</div></div>
+      <div class="dashboard-card"><div class="card-header">Total Expense</div><div class="card-value" style="color:var(--danger);">${formatCurrency(totalExpense)}</div><div class="card-footer">Filtered daily accounts</div></div>
+      <div class="dashboard-card"><div class="card-header">Net Balance</div><div class="card-value">${formatCurrency(totalIncome - totalExpense)}</div><div class="card-footer">Income - expense</div></div>
+      <div class="dashboard-card"><div class="card-header">Cash Balance</div><div class="card-value">${formatCurrency(totalCash)}</div><div class="card-footer">Ledger based cash</div></div>
+      <div class="dashboard-card"><div class="card-header">Bank/UPI Balance</div><div class="card-value">${formatCurrency(totalBank)}</div><div class="card-footer">Ledger based bank</div></div>
+    `;
+  }
+  renderFinanceAccounts(accounts);
+  renderFinanceCategories(categories);
+  renderDailyAccounts(daily);
+  renderFinanceTransfers(transfers);
+}
+
+function renderFinanceAccounts(accounts) {
+  const tbody = document.getElementById("finance-accounts-table-body");
+  if (!tbody) return;
+  tbody.innerHTML = accounts.length ? accounts.map((account) => `
+    <tr><td><strong>${escapeHtml(account.accountName)}</strong></td><td>${escapeHtml(account.type)}</td><td>${formatCurrency(account.openingBalance)}</td><td><strong>${formatCurrency(getFinanceAccountBalance(account))}</strong></td><td><span class="badge ${account.status === 'Active' ? 'badge-success' : 'badge-danger'}">${escapeHtml(account.status || 'Active')}</span></td><td class="text-right"><button class="btn-secondary btn-sm finance-account-edit" data-id="${account.id}">Edit</button> <button class="btn-danger btn-sm finance-account-delete" data-id="${account.id}">Delete</button></td></tr>
+  `).join("") : `<tr><td colspan="6" class="text-center">No finance accounts yet.</td></tr>`;
+  tbody.querySelectorAll(".finance-account-edit").forEach((btn) => btn.addEventListener("click", () => editFinanceAccount(btn.dataset.id)));
+  tbody.querySelectorAll(".finance-account-delete").forEach((btn) => btn.addEventListener("click", () => deleteFinanceRecord(KEYS.financeAccounts, btn.dataset.id)));
+}
+
+function renderFinanceCategories(categories) {
+  const tbody = document.getElementById("finance-categories-table-body");
+  if (!tbody) return;
+  tbody.innerHTML = categories.length ? categories.map((category) => `
+    <tr><td><strong>${escapeHtml(category.categoryName)}</strong></td><td>${escapeHtml(category.type)}</td><td><span class="badge ${category.status === 'Active' ? 'badge-success' : 'badge-danger'}">${escapeHtml(category.status || 'Active')}</span></td><td>${escapeHtml(category.notes || '')}</td><td class="text-right"><button class="btn-secondary btn-sm finance-category-edit" data-id="${category.id}">Edit</button> <button class="btn-danger btn-sm finance-category-delete" data-id="${category.id}">Delete</button></td></tr>
+  `).join("") : `<tr><td colspan="5" class="text-center">No finance categories yet.</td></tr>`;
+  tbody.querySelectorAll(".finance-category-edit").forEach((btn) => btn.addEventListener("click", () => editFinanceCategory(btn.dataset.id)));
+  tbody.querySelectorAll(".finance-category-delete").forEach((btn) => btn.addEventListener("click", () => deleteFinanceRecord(KEYS.financeCategories, btn.dataset.id)));
+}
+
+function renderDailyAccounts(entries) {
+  const tbody = document.getElementById("daily-accounts-table-body");
+  if (!tbody) return;
+  tbody.innerHTML = entries.length ? entries.map((entry) => `
+    <tr><td>${formatDate(entry.date)}</td><td><span class="badge ${entry.type === 'Income' ? 'badge-success' : 'badge-danger'}">${escapeHtml(entry.type)}</span></td><td>${escapeHtml(entry.accountName || getAccountName(entry.accountId))}</td><td>${escapeHtml(entry.categoryName || getCategoryName(entry.categoryId))}</td><td>${escapeHtml(entry.desc)}</td><td><strong>${formatCurrency(entry.amount)}</strong></td><td><span class="badge ${entry.status === 'Voided' ? 'badge-danger' : 'badge-success'}">${escapeHtml(entry.status || 'Posted')}</span></td><td class="text-right"><button class="btn-secondary btn-sm daily-edit" data-id="${entry.id}">Edit</button> <button class="btn-danger btn-sm daily-void" data-id="${entry.id}">Void</button> <button class="btn-danger btn-sm daily-delete" data-id="${entry.id}">Delete</button></td></tr>
+  `).join("") : `<tr><td colspan="8" class="text-center">No daily account entries yet.</td></tr>`;
+  tbody.querySelectorAll(".daily-edit").forEach((btn) => btn.addEventListener("click", () => editDailyAccount(btn.dataset.id)));
+  tbody.querySelectorAll(".daily-void").forEach((btn) => btn.addEventListener("click", () => voidFinanceRecord(KEYS.dailyAccounts, btn.dataset.id)));
+  tbody.querySelectorAll(".daily-delete").forEach((btn) => btn.addEventListener("click", () => deleteFinanceRecord(KEYS.dailyAccounts, btn.dataset.id)));
+}
+
+function renderFinanceTransfers(transfers) {
+  const tbody = document.getElementById("finance-transfers-table-body");
+  if (!tbody) return;
+  tbody.innerHTML = transfers.length ? transfers.map((transfer) => `
+    <tr><td>${formatDate(transfer.date)}</td><td>${escapeHtml(transfer.fromAccountName || getAccountName(transfer.fromAccountId))}</td><td>${escapeHtml(transfer.toAccountName || getAccountName(transfer.toAccountId))}</td><td><strong>${formatCurrency(transfer.amount)}</strong></td><td>${escapeHtml(transfer.reference || '')}</td><td><span class="badge ${transfer.status === 'Voided' ? 'badge-danger' : 'badge-success'}">${escapeHtml(transfer.status || 'Posted')}</span></td><td class="text-right"><button class="btn-secondary btn-sm transfer-edit" data-id="${transfer.id}">Edit</button> <button class="btn-danger btn-sm transfer-void" data-id="${transfer.id}">Void</button> <button class="btn-danger btn-sm transfer-delete" data-id="${transfer.id}">Delete</button></td></tr>
+  `).join("") : `<tr><td colspan="7" class="text-center">No account transfers yet.</td></tr>`;
+  tbody.querySelectorAll(".transfer-edit").forEach((btn) => btn.addEventListener("click", () => editFinanceTransfer(btn.dataset.id)));
+  tbody.querySelectorAll(".transfer-void").forEach((btn) => btn.addEventListener("click", () => voidFinanceRecord(KEYS.financeTransfers, btn.dataset.id)));
+  tbody.querySelectorAll(".transfer-delete").forEach((btn) => btn.addEventListener("click", () => deleteFinanceRecord(KEYS.financeTransfers, btn.dataset.id)));
+}
+
+async function saveFinanceAccount(event) {
+  event.preventDefault();
+  const data = { accountName: getValue("fin-account-name"), type: getValue("fin-account-type"), openingBalance: getNumber("fin-account-opening"), currentBalance: getNumber("fin-account-current") || getNumber("fin-account-opening"), status: getValue("fin-account-status") };
+  if (!data.accountName) return showToast("Account name is required.", "error");
+  await saveFinanceDocument(KEYS.financeAccounts, financeEditIds.account, data);
+  financeEditIds.account = null;
+  document.getElementById("finance-account-form")?.reset();
+  await refreshActiveData();
+}
+
+async function saveFinanceCategory(event) {
+  event.preventDefault();
+  const data = { categoryName: getValue("fin-category-name"), type: getValue("fin-category-type"), status: getValue("fin-category-status"), notes: getValue("fin-category-notes") };
+  if (!data.categoryName) return showToast("Category name is required.", "error");
+  await saveFinanceDocument(KEYS.financeCategories, financeEditIds.category, data);
+  financeEditIds.category = null;
+  document.getElementById("finance-category-form")?.reset();
+  await refreshActiveData();
+}
+
+async function saveDailyAccount(event) {
+  event.preventDefault();
+  const account = getStoredRecords(KEYS.financeAccounts).find((row) => row.id === getValue("daily-account"));
+  const category = getStoredRecords(KEYS.financeCategories).find((row) => row.id === getValue("daily-category"));
+  const data = { date: getValue("daily-date"), type: getValue("daily-type"), accountId: account?.id || "", accountName: account?.accountName || "", categoryId: category?.id || "", categoryName: category?.categoryName || "", desc: getValue("daily-desc"), amount: getNumber("daily-amount"), reference: getValue("daily-ref"), status: "Posted" };
+  if (!data.date || !data.accountId || !data.categoryId || !data.desc || data.amount <= 0) return showToast("Complete daily account entry fields.", "error");
+  const id = await saveFinanceDocument(KEYS.dailyAccounts, financeEditIds.daily, data);
+  await reconcileFinanceLedger(data, { id, previous: financeEditIds.daily ? getStoredRecords(KEYS.dailyAccounts).find((row) => row.id === financeEditIds.daily) : null, sourceType: "daily" });
+  financeEditIds.daily = null;
+  document.getElementById("daily-account-form")?.reset();
+  await refreshActiveData();
+}
+
+async function saveFinanceTransfer(event) {
+  event.preventDefault();
+  const from = getStoredRecords(KEYS.financeAccounts).find((row) => row.id === getValue("fin-transfer-from"));
+  const to = getStoredRecords(KEYS.financeAccounts).find((row) => row.id === getValue("fin-transfer-to"));
+  const data = { date: getValue("fin-transfer-date"), fromAccountId: from?.id || "", fromAccountName: from?.accountName || "", toAccountId: to?.id || "", toAccountName: to?.accountName || "", amount: getNumber("fin-transfer-amount"), reference: getValue("fin-transfer-ref"), notes: getValue("fin-transfer-notes"), status: "Posted" };
+  if (!data.date || !data.fromAccountId || !data.toAccountId || data.fromAccountId === data.toAccountId || data.amount <= 0) return showToast("Choose two different accounts and enter a valid amount.", "error");
+  const id = await saveFinanceDocument(KEYS.financeTransfers, financeEditIds.transfer, data);
+  await reconcileFinanceLedger(data, { id, previous: financeEditIds.transfer ? getStoredRecords(KEYS.financeTransfers).find((row) => row.id === financeEditIds.transfer) : null, sourceType: "transfer" });
+  financeEditIds.transfer = null;
+  document.getElementById("finance-transfer-form")?.reset();
+  await refreshActiveData();
+}
+
+async function saveFinanceDocument(key, id, data) {
+  if (id) {
+    await updateCollectionRecord(COLLECTION_BY_KEY[key], id, data);
+    showToast("Finance record updated.", "success");
+    return id;
+  }
+  const savedId = await createCollectionRecord(COLLECTION_BY_KEY[key], data);
+  showToast("Finance record created.", "success");
+  return savedId;
+}
+
+function editFinanceAccount(id) {
+  const record = getStoredRecords(KEYS.financeAccounts).find((row) => row.id === id);
+  if (!record) return;
+  financeEditIds.account = id;
+  setValue("fin-account-name", record.accountName); setValue("fin-account-type", record.type); setValue("fin-account-opening", record.openingBalance); setValue("fin-account-current", getFinanceAccountBalance(record)); setValue("fin-account-status", record.status || "Active");
+}
+
+function editFinanceCategory(id) {
+  const record = getStoredRecords(KEYS.financeCategories).find((row) => row.id === id);
+  if (!record) return;
+  financeEditIds.category = id;
+  setValue("fin-category-name", record.categoryName); setValue("fin-category-type", record.type); setValue("fin-category-status", record.status || "Active"); setValue("fin-category-notes", record.notes);
+}
+
+function editDailyAccount(id) {
+  const record = getStoredRecords(KEYS.dailyAccounts).find((row) => row.id === id);
+  if (!record || record.status === "Voided") return;
+  financeEditIds.daily = id;
+  setValue("daily-date", record.date); setValue("daily-type", record.type); refreshFinanceOptions(); setValue("daily-account", record.accountId); setValue("daily-category", record.categoryId); setValue("daily-desc", record.desc); setValue("daily-amount", record.amount); setValue("daily-ref", record.reference);
+}
+
+function editFinanceTransfer(id) {
+  const record = getStoredRecords(KEYS.financeTransfers).find((row) => row.id === id);
+  if (!record || record.status === "Voided") return;
+  financeEditIds.transfer = id;
+  setValue("fin-transfer-date", record.date); setValue("fin-transfer-from", record.fromAccountId); setValue("fin-transfer-to", record.toAccountId); setValue("fin-transfer-amount", record.amount); setValue("fin-transfer-ref", record.reference); setValue("fin-transfer-notes", record.notes);
+}
+
+async function reconcileFinanceLedger(data, meta) {
+  const operations = [];
+  addFinanceLedgerDeleteOperations(operations, meta.id || meta.previous?.id);
+  addFinanceBalanceDeltaOperations(operations, data, meta);
+  if (data?.status !== "Voided") addFinanceLedgerCreateOperations(operations, data, meta);
+  if (operations.length) await commitBatchOperations(operations);
+}
+
+
+function addFinanceBalanceDeltaOperations(operations, data, meta) {
+  const applyDaily = (entry, multiplier = 1) => {
+    if (!entry?.accountId || entry.status === "Voided") return;
+    const signed = (entry.type === "Income" ? getNumberFromValue(entry.amount) : -getNumberFromValue(entry.amount)) * multiplier;
+    addFinanceAccountBalanceUpdate(operations, entry.accountId, signed);
+  };
+  const applyTransfer = (entry, multiplier = 1) => {
+    if (!entry || entry.status === "Voided") return;
+    const amount = getNumberFromValue(entry.amount) * multiplier;
+    addFinanceAccountBalanceUpdate(operations, entry.fromAccountId, -amount);
+    addFinanceAccountBalanceUpdate(operations, entry.toAccountId, amount);
+  };
+  if (meta.sourceType === "transfer") {
+    applyTransfer(meta.previous, -1);
+    if (data?.status !== "Voided") applyTransfer(data, 1);
+    return;
+  }
+  applyDaily(meta.previous, -1);
+  if (data?.status !== "Voided") applyDaily(data, 1);
+}
+
+function addFinanceAccountBalanceUpdate(operations, accountId, delta) {
+  if (!accountId || !delta) return;
+  const account = getStoredRecords(KEYS.financeAccounts).find((row) => row.id === accountId);
+  if (!account) return;
+  const existing = operations.find((operation) => operation.type === "update" && operation.collectionName === COLLECTIONS.financeAccounts && operation.id === accountId);
+  const base = existing ? getNumberFromValue(existing.payload.currentBalance) : getFinanceAccountBalance(account);
+  const payload = existing?.payload || {};
+  payload.currentBalance = base + delta;
+  payload.lastBalanceUpdate = new Date().toISOString().slice(0, 10);
+  if (!existing) operations.push({ type: "update", collectionName: COLLECTIONS.financeAccounts, id: accountId, payload });
+}
+
+function addFinanceLedgerDeleteOperations(operations, sourceId) {
+  if (!sourceId) return;
+  getStoredRecords(KEYS.ledgerEntries).filter((entry) => entry.sourceId === sourceId).forEach((entry) => operations.push({ type: "delete", collectionName: COLLECTIONS.ledgerEntries, id: entry.id }));
+}
+
+function addFinanceLedgerCreateOperations(operations, data, meta) {
+  if (meta.sourceType === "transfer") {
+    operations.push({ type: "set", collectionName: COLLECTIONS.ledgerEntries, payload: { sourceId: meta.id, date: data.date, module: "Company Finance", account: data.fromAccountName, accountId: data.fromAccountId, type: "transfer-out", debit: data.amount, credit: 0, referenceCollection: COLLECTIONS.financeTransfers, referenceId: meta.id, description: `Transfer to ${data.toAccountName}`, status: "posted" } });
+    operations.push({ type: "set", collectionName: COLLECTIONS.ledgerEntries, payload: { sourceId: meta.id, date: data.date, module: "Company Finance", account: data.toAccountName, accountId: data.toAccountId, type: "transfer-in", debit: 0, credit: data.amount, referenceCollection: COLLECTIONS.financeTransfers, referenceId: meta.id, description: `Transfer from ${data.fromAccountName}`, status: "posted" } });
+    return;
+  }
+  const isIncome = data.type === "Income";
+  operations.push({ type: "set", collectionName: COLLECTIONS.ledgerEntries, payload: { sourceId: meta.id, date: data.date, module: "Company Finance", account: data.accountName, accountId: data.accountId, categoryId: data.categoryId, categoryName: data.categoryName, type: isIncome ? "income" : "expense", debit: isIncome ? 0 : data.amount, credit: isIncome ? data.amount : 0, referenceCollection: COLLECTIONS.dailyAccounts, referenceId: meta.id, description: data.desc, status: "posted" } });
+}
+
+async function voidFinanceRecord(key, id) {
+  const record = getStoredRecords(key).find((row) => row.id === id);
+  if (!record || record.status === "Voided") return;
+  if (!confirm("Void this finance record and reverse linked ledger entries?")) return;
+  await reconcileFinanceLedger({ ...record, status: "Voided" }, { id, previous: record, sourceType: key === KEYS.financeTransfers ? "transfer" : "daily" });
+  await updateCollectionRecord(COLLECTION_BY_KEY[key], id, { status: "Voided", voidedAt: new Date().toISOString() });
+  showToast("Finance record voided.", "success");
+  await refreshActiveData();
+}
+
+async function deleteFinanceRecord(key, id) {
+  if (!confirm("Delete this finance record?")) return;
+  await reconcileFinanceLedger(null, { id, previous: getStoredRecords(key).find((row) => row.id === id), sourceType: key === KEYS.financeTransfers ? "transfer" : "daily" });
+  await deleteCollectionRecord(COLLECTION_BY_KEY[key], id);
+  showToast("Finance record deleted.", "success");
+  await refreshActiveData();
+}
+
+
+
+function initProductionMaterialUi() {
+  document.getElementById("add-production-material-btn")?.addEventListener("click", () => addProductionMaterialRow());
+  document.getElementById("production-materials-container")?.addEventListener("input", handleProductionMaterialChange);
+  document.getElementById("production-materials-container")?.addEventListener("change", handleProductionMaterialChange);
+  document.getElementById("production-materials-container")?.addEventListener("click", (event) => {
+    if (!event.target.closest(".remove-production-material-btn")) return;
+    const rows = document.querySelectorAll("[data-production-material-row]");
+    if (rows.length <= 1) {
+      showToast("At least one raw material is required.", "info");
+      return;
+    }
+    event.target.closest("[data-production-material-row]")?.remove();
+    recalculateProductionCost();
+  });
+  document.getElementById("prod-qty")?.addEventListener("input", recalculateProductionCost);
+  addProductionMaterialRow();
+}
+
+function addProductionMaterialRow(material = {}) {
+  const template = document.getElementById("production-material-template");
+  const container = document.getElementById("production-materials-container");
+  if (!template || !container) return;
+  const fragment = template.content.cloneNode(true);
+  const row = fragment.querySelector("[data-production-material-row]");
+  container.appendChild(fragment);
+  populateProductionMaterialSelect(row?.querySelector(".production-material-select"));
+  if (material.materialId || material.name) {
+    const select = row.querySelector(".production-material-select");
+    select.value = material.materialId || findRawMaterialByName(material.name)?.id || "";
+  }
+  row.querySelector(".production-material-qty").value = material.quantity || material.qty || "";
+  row.querySelector(".production-material-rate").value = material.rate || "";
+  updateProductionMaterialRow(row);
+}
+
+function refreshProductionMaterialOptions() {
+  document.querySelectorAll(".production-material-select").forEach((select) => {
+    const currentValue = select.value;
+    populateProductionMaterialSelect(select);
+    select.value = currentValue;
+    updateProductionMaterialRow(select.closest("[data-production-material-row]"));
+  });
+}
+
+function populateProductionMaterialSelect(select) {
+  if (!select) return;
+  const materials = getStoredRecords(KEYS.rawMaterials);
+  select.innerHTML = `<option value="">Select raw material</option>` + materials.map((material) => `
+    <option value="${escapeHtml(material.id)}" data-name="${escapeHtml(material.name)}" data-unit="${escapeHtml(material.unit || '')}" data-rate="${getNumberFromValue(material.rate)}" data-stock="${getNumberFromValue(material.currentStock)}">${escapeHtml(material.name)} (${getNumberFromValue(material.currentStock)} ${escapeHtml(material.unit || '')})</option>
+  `).join("");
+}
+
+function handleProductionMaterialChange(event) {
+  const row = event.target.closest("[data-production-material-row]");
+  if (!row) return;
+  updateProductionMaterialRow(row);
+  recalculateProductionCost();
+}
+
+function updateProductionMaterialRow(row) {
+  if (!row) return;
+  const select = row.querySelector(".production-material-select");
+  const selected = select?.selectedOptions?.[0];
+  const unit = selected?.dataset.unit || "";
+  const stock = getNumberFromValue(selected?.dataset.stock);
+  const qty = getNumberFromValue(row.querySelector(".production-material-qty")?.value);
+  const rateInput = row.querySelector(".production-material-rate");
+  if (rateInput && !rateInput.value) rateInput.value = selected?.dataset.rate || 0;
+  row.querySelector(".production-material-unit").value = unit;
+  const rate = getNumberFromValue(rateInput?.value);
+  row.querySelector(".production-material-cost").value = (qty * rate).toFixed(2);
+  const stockEl = row.querySelector(".stock-availability");
+  if (stockEl) {
+    stockEl.textContent = selected?.value ? `Stock: ${stock} ${unit}` : "Stock: -";
+    stockEl.classList.toggle("low-stock", Boolean(selected?.value) && qty > stock);
+  }
+}
+
+function recalculateProductionCost() {
+  const totalCost = getProductionMaterialsFromForm().reduce((sum, material) => sum + material.lineCost, 0);
+  const qtyProduced = getNumber("prod-qty");
+  setValue("prod-cost", totalCost.toFixed(2));
+  setValue("prod-cost-unit", qtyProduced > 0 ? (totalCost / qtyProduced).toFixed(2) : "0.00");
+}
+
+function getProductionMaterialsFromForm() {
+  return [...document.querySelectorAll("[data-production-material-row]")].map((row) => {
+    const select = row.querySelector(".production-material-select");
+    const selected = select?.selectedOptions?.[0];
+    const quantity = getNumberFromValue(row.querySelector(".production-material-qty")?.value);
+    const rate = getNumberFromValue(row.querySelector(".production-material-rate")?.value);
+    return {
+      materialId: select?.value || "",
+      name: selected?.dataset.name || "",
+      quantity,
+      unit: selected?.dataset.unit || row.querySelector(".production-material-unit")?.value || "",
+      rate,
+      lineCost: quantity * rate,
+      stockAvailable: getNumberFromValue(selected?.dataset.stock)
+    };
+  }).filter((material) => material.materialId && material.name && material.quantity > 0);
+}
+
+function renderProductionMaterialsSummary(materials = []) {
+  if (!Array.isArray(materials) || !materials.length) return "-";
+  return materials.map((material) => `${escapeHtml(material.name)} (${material.quantity} ${escapeHtml(material.unit || '')})`).join("<br>");
+}
+
+function findRawMaterialByName(name) {
+  return getStoredRecords(KEYS.rawMaterials).find((material) =>
+    (material.name || "").toLowerCase() === String(name || "").toLowerCase()
+  );
+}
+
+
+const REPORT_LABELS = {
+  balanceSheet: "Balance Sheet",
+  profitLoss: "Profit / Loss",
+  investor: "Investor Capital",
+  stock: "Stock Valuation",
+  assets: "Asset Register",
+  salesPurchase: "Sales / Purchase",
+  gst: "GST Summary",
+  hsnTax: "HSN / Item Tax",
+  reconciliation: "Reconciliation Alerts",
+  ledgerPreview: "Ledger Preview"
+};
+
 function initReportExportActions() {
   document.querySelectorAll("[data-report-export]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -1521,16 +2970,31 @@ function initReportExportActions() {
       if (format === "pdf") printReportPdf(reportType);
     });
   });
+  document.getElementById("erp-report-selector")?.addEventListener("change", (event) => renderSelectedErpReport(event.target.value));
+  document.getElementById("erp-report-csv-btn")?.addEventListener("click", () => exportReportCsv(getSelectedReportType()));
+  document.getElementById("erp-report-pdf-btn")?.addEventListener("click", () => printReportPdf(getSelectedReportType()));
+}
+
+function getSelectedReportType() {
+  return document.getElementById("erp-report-selector")?.value || "balanceSheet";
 }
 
 function getReportRows(reportType) {
   const sales = getStoredRecords(KEYS.sales);
+  const orders = getStoredRecords(KEYS.orders);
   const purchases = getStoredRecords(KEYS.purchases);
   const expenses = getStoredRecords(KEYS.expenses);
   const income = getStoredRecords(KEYS.income);
   const inventory = getStoredRecords(KEYS.inventory);
+  const rawMaterials = getStoredRecords(KEYS.rawMaterials);
   const investors = getStoredRecords(KEYS.investors);
   const sharing = getStoredRecords(KEYS.sharing);
+  const salaryPayments = getStoredRecords(KEYS.salaryPayments).filter((row) => row.status !== "Voided");
+  const assets = getStoredRecords(KEYS.assets);
+  const loans = getStoredRecords(KEYS.managerLoans).filter((loan) => loan.status !== "Voided");
+  const accounts = getStoredRecords(KEYS.financeAccounts);
+
+  if (reportType === "balanceSheet") return getBalanceSheetRows({ sales, orders, purchases, expenses, income, inventory, rawMaterials, investors, assets, loans, accounts });
 
   if (reportType === "profitLoss") {
     return [
@@ -1538,15 +3002,16 @@ function getReportRows(reportType) {
       { metric: "Other Income", amount: sumRecords(income, "amount") },
       { metric: "Purchases", amount: sumRecords(purchases, "totalAmount") },
       { metric: "Expenses", amount: sumRecords(expenses, "amount") },
-      { metric: "Estimated Profit", amount: sumRecords(sales, "finalAmount") + sumRecords(income, "amount") - sumRecords(purchases, "totalAmount") - sumRecords(expenses, "amount") }
+      { metric: "Salary Expense", amount: sumRecords(salaryPayments, "amount") },
+      { metric: "Estimated Profit", amount: sumRecords(sales, "finalAmount") + sumRecords(income, "amount") - sumRecords(purchases, "totalAmount") - sumRecords(expenses, "amount") - sumRecords(salaryPayments, "amount") }
     ];
   }
 
   if (reportType === "investor") {
     return investors.map((investor) => ({
       investor: investor.name || investor.email || investor.id,
-      capital: parseFloat(investor.amount || 0),
-      share: parseFloat(investor.share || 0),
+      capital: parseFloat(investor.amount || investor.initialInvestment || 0),
+      share: parseFloat(investor.share || investor.sharePercentage || 0),
       paid: sharing.filter((row) => row.investor === investor.name || row.investorId === investor.id).filter((row) => row.status === "Paid").reduce((sum, row) => sum + parseFloat(row.amount || 0), 0),
       pending: sharing.filter((row) => row.investor === investor.name || row.investorId === investor.id).filter((row) => row.status !== "Paid").reduce((sum, row) => sum + parseFloat(row.amount || 0), 0)
     }));
@@ -1560,6 +3025,18 @@ function getReportRows(reportType) {
     });
   }
 
+  if (reportType === "assets") {
+    return assets.map((asset) => ({
+      assetName: asset.assetName,
+      type: asset.type,
+      purchaseValue: getNumberFromValue(asset.purchaseValue),
+      purchaseDate: asset.purchaseDate,
+      vendor: asset.vendor || "-",
+      condition: asset.condition || "-",
+      status: asset.status || "Active"
+    }));
+  }
+
   if (reportType === "salesPurchase") {
     return [
       { metric: "Sales Count", value: sales.length },
@@ -1570,42 +3047,150 @@ function getReportRows(reportType) {
     ];
   }
 
-  if (reportType === "gst") {
-    const salesTaxable = sumTaxableEstimate(sales, "finalAmount");
-    const purchaseTaxable = sumTaxableEstimate(purchases, "totalAmount");
-    const outputGst = sumRecords(sales, "finalAmount") - salesTaxable;
-    const inputGst = sumRecords(purchases, "totalAmount") - purchaseTaxable;
-    return [
-      { metric: "Sales Taxable Value", amount: salesTaxable },
-      { metric: "Output GST", amount: outputGst },
-      { metric: "Purchase Taxable Value", amount: purchaseTaxable },
-      { metric: "Input GST", amount: inputGst },
-      { metric: "Estimated GST Payable", amount: outputGst - inputGst }
-    ];
-  }
+  if (reportType === "gst") return getGstSummaryRows(sales, purchases);
+  if (reportType === "hsnTax") return getHsnTaxRows(sales, purchases);
+  if (reportType === "reconciliation") return getReconciliationRows();
+  if (reportType === "ledgerPreview") return getLedgerPreviewRows();
 
   return [];
+}
+
+function getBalanceSheetRows({ sales, orders, purchases, inventory, rawMaterials, investors, assets, loans, accounts }) {
+  const cash = getStoredRecords(KEYS.cashBook);
+  const bank = getStoredRecords(KEYS.bankBook);
+  const cashBalance = cash.length ? getNumberFromValue(cash[cash.length - 1].balance) : 0;
+  const bankBalance = bank.length ? getNumberFromValue(bank[bank.length - 1].balance) : 0;
+  const accountBalances = accounts.reduce((sum, account) => sum + getNumberFromValue(account.currentBalance ?? account.openingBalance), 0);
+  const inventoryValue = inventory.reduce((sum, item) => sum + getNumberFromValue(item.currentStock ?? item.stockIn) * getNumberFromValue(item.costPrice || item.rate || item.avgCost), 0);
+  const rawMaterialValue = rawMaterials.reduce((sum, item) => sum + getNumberFromValue(item.currentStock ?? item.openingStock) * getNumberFromValue(item.rate), 0);
+  const fixedAssets = assets.filter((asset) => !["Voided", "Cancelled"].includes(asset.status)).reduce((sum, asset) => sum + getNumberFromValue(asset.purchaseValue), 0);
+  const receivables = [...sales, ...orders].filter((row) => !["Paid", "Cancelled", "Voided"].includes(row.paymentStatus || row.status)).reduce((sum, row) => sum + getNumberFromValue(row.balanceAmount ?? row.balanceDue ?? row.finalAmount ?? row.totalAmount), 0);
+  const payables = purchases.filter((row) => !["Paid", "Voided", "Cancelled"].includes(row.paymentStatus || row.status)).reduce((sum, row) => sum + getNumberFromValue(row.balancePayable ?? row.totalAmount), 0);
+  const investorCapital = investors.reduce((sum, investor) => sum + getNumberFromValue(investor.amount ?? investor.initialInvestment), 0);
+  const loanOutstanding = loans.reduce((sum, loan) => sum + getLoanOutstanding(loan.id), 0);
+  const totalAssets = cashBalance + bankBalance + accountBalances + inventoryValue + rawMaterialValue + fixedAssets + receivables;
+  const totalLiabilities = payables + investorCapital + loanOutstanding;
+  return [
+    { section: "Assets", account: "Cash", amount: cashBalance, note: "Latest cashbook balance" },
+    { section: "Assets", account: "Bank", amount: bankBalance, note: "Latest bankbook balance" },
+    { section: "Assets", account: "Finance Accounts", amount: accountBalances, note: "Account master current balances" },
+    { section: "Assets", account: "Inventory", amount: inventoryValue, note: "Finished goods valuation" },
+    { section: "Assets", account: "Raw Materials", amount: rawMaterialValue, note: "Raw material valuation" },
+    { section: "Assets", account: "Fixed Assets", amount: fixedAssets, note: "Asset register purchase value" },
+    { section: "Assets", account: "Receivables", amount: receivables, note: "Unpaid customer balances" },
+    { section: "Liabilities", account: "Supplier Payables", amount: payables, note: "Unpaid purchase balances" },
+    { section: "Liabilities/Equity", account: "Investor Capital", amount: investorCapital, note: "Investor capital" },
+    { section: "Liabilities", account: "Manager Loans", amount: loanOutstanding, note: "Loan outstanding" },
+    { section: "Summary", account: "Total Assets", amount: totalAssets, note: "Assets subtotal" },
+    { section: "Summary", account: "Total Liabilities + Equity", amount: totalLiabilities, note: "Liabilities/equity subtotal" },
+    { section: "Summary", account: "Net Position", amount: totalAssets - totalLiabilities, note: "Assets - liabilities/equity" }
+  ];
+}
+
+function getGstSummaryRows(sales, purchases) {
+  const salesTaxable = sumTaxableEstimate(sales, "finalAmount");
+  const purchaseTaxable = sumTaxableEstimate(purchases, "totalAmount");
+  const salesTotal = sumRecords(sales, "finalAmount");
+  const purchaseTotal = sumRecords(purchases, "totalAmount");
+  const outputGst = salesTotal - salesTaxable;
+  const inputGst = purchaseTotal - purchaseTaxable;
+  return [
+    { metric: "Sales Taxable Value", taxable: salesTaxable, gst: outputGst, total: salesTotal, type: "Output" },
+    { metric: "Output GST", taxable: salesTaxable, gst: outputGst, total: outputGst, type: "Output" },
+    { metric: "Purchase Taxable Value", taxable: purchaseTaxable, gst: inputGst, total: purchaseTotal, type: "Input" },
+    { metric: "Input GST", taxable: purchaseTaxable, gst: inputGst, total: inputGst, type: "Input" },
+    { metric: "Estimated GST Payable", taxable: salesTaxable - purchaseTaxable, gst: outputGst - inputGst, total: outputGst - inputGst, type: outputGst >= inputGst ? "Payable" : "Credit" }
+  ];
+}
+
+function getHsnTaxRows(sales, purchases) {
+  const buckets = new Map();
+  const addItems = (records, source, amountField) => records.forEach((record) => extractReportItems(record).forEach((item) => {
+    const hsn = item.hsn || item.hsnCode || item.code || item.name || "Unmapped";
+    const qty = getNumberFromValue(item.qty ?? item.quantity ?? 1);
+    const total = getNumberFromValue(item.total ?? item.amount ?? item.lineTotal ?? item.price ?? record[amountField]);
+    const gstRate = getNumberFromValue(item.gstRate ?? item.taxRate ?? record.gstRate ?? 18);
+    const taxable = total / (1 + gstRate / 100);
+    const gst = total - taxable;
+    const row = buckets.get(hsn) || { hsn, item: item.name || item.product || hsn, salesQty: 0, salesTaxable: 0, salesGst: 0, purchaseQty: 0, purchaseTaxable: 0, purchaseGst: 0 };
+    if (source === "sales") {
+      row.salesQty += qty; row.salesTaxable += taxable; row.salesGst += gst;
+    } else {
+      row.purchaseQty += qty; row.purchaseTaxable += taxable; row.purchaseGst += gst;
+    }
+    buckets.set(hsn, row);
+  }));
+  addItems(sales, "sales", "finalAmount");
+  addItems(purchases, "purchases", "totalAmount");
+  return Array.from(buckets.values()).map((row) => ({ ...row, netGst: row.salesGst - row.purchaseGst }));
+}
+
+function extractReportItems(record) {
+  if (Array.isArray(record.items)) return record.items;
+  if (Array.isArray(record.products)) return record.products;
+  if (Array.isArray(record.rawMaterials)) return record.rawMaterials;
+  if (record.item) return [{ name: record.item, qty: record.quantity, total: record.finalAmount || record.totalAmount || record.amount, hsn: record.hsn || record.hsnCode }];
+  if (record.product) return [{ name: record.product, qty: record.quantity, total: record.finalAmount || record.totalAmount || record.amount, hsn: record.hsn || record.hsnCode }];
+  return [{ name: record.customerName || record.supplierName || record.invoiceNo || record.id || "Unmapped", qty: record.quantity || 1, total: record.finalAmount || record.totalAmount || record.amount, hsn: record.hsn || record.hsnCode || "Unmapped" }];
+}
+
+function getReconciliationRows() {
+  const alerts = [];
+  getStoredRecords(KEYS.inventory).forEach((item) => {
+    const stock = getNumberFromValue(item.currentStock ?? item.stockIn);
+    if (stock < 0) alerts.push({ severity: "High", module: "Inventory", alert: "Negative stock", reference: item.name || item.itemName || item.id, amount: stock });
+  });
+  getStoredRecords(KEYS.rawMaterials).forEach((item) => {
+    const stock = getNumberFromValue(item.currentStock ?? item.openingStock);
+    if (stock < 0) alerts.push({ severity: "High", module: "Raw Materials", alert: "Negative raw material stock", reference: item.name || item.id, amount: stock });
+  });
+  getStoredRecords(KEYS.purchases).filter((row) => !["Paid", "Voided", "Cancelled"].includes(row.paymentStatus || row.status)).forEach((row) => alerts.push({ severity: "Medium", module: "Suppliers", alert: "Unpaid supplier payable", reference: row.invoiceNo || row.supplierName || row.id, amount: getNumberFromValue(row.balancePayable ?? row.totalAmount) }));
+  [...getStoredRecords(KEYS.sales), ...getStoredRecords(KEYS.orders)].filter((row) => !["Paid", "Voided", "Cancelled"].includes(row.paymentStatus || row.status)).forEach((row) => alerts.push({ severity: "Medium", module: "Customers", alert: "Unpaid customer receivable", reference: row.invoiceNo || row.customer || row.customerName || row.id, amount: getNumberFromValue(row.balanceAmount ?? row.balanceDue ?? row.finalAmount ?? row.totalAmount) }));
+  const ledgerBalance = getStoredRecords(KEYS.ledgerEntries).reduce((sum, entry) => sum + getNumberFromValue(entry.debit) - getNumberFromValue(entry.credit), 0);
+  if (Math.abs(ledgerBalance) > 0.01) alerts.push({ severity: "Info", module: "Ledger", alert: "Ledger debit/credit mismatch", reference: "ledgerEntries", amount: ledgerBalance });
+  return alerts;
+}
+
+function getLedgerPreviewRows() {
+  const preview = [];
+  const addPreview = (key, label, amountGetter) => getStoredRecords(key).slice(0, 25).forEach((entry) => preview.push({ ledger: label, date: entry.date || entry.createdAt || "-", reference: entry.referenceId || entry.sourceId || entry.id, description: entry.description || entry.desc || entry.notes || entry.type || "-", debit: amountGetter(entry, "debit"), credit: amountGetter(entry, "credit") }));
+  addPreview(KEYS.customerLedger, "Customer Ledger", (entry, side) => side === "debit" ? getNumberFromValue(entry.debit || entry.amountDue || entry.amount) : getNumberFromValue(entry.credit || entry.amountPaid));
+  addPreview(KEYS.supplierLedger, "Supplier Ledger", (entry, side) => side === "debit" ? getNumberFromValue(entry.debit || entry.paymentAmount) : getNumberFromValue(entry.credit || entry.amount));
+  addPreview(KEYS.stockLedger, "Stock Ledger", (entry, side) => side === "debit" ? getNumberFromValue(entry.stockIn || entry.quantityIn) : getNumberFromValue(entry.stockOut || entry.quantityOut));
+  addPreview(KEYS.rawMaterialLedger, "Raw Material Ledger", (entry, side) => side === "debit" ? getNumberFromValue(entry.stockIn || entry.quantityIn) : getNumberFromValue(entry.stockOut || entry.quantityOut));
+  addPreview(KEYS.ledgerEntries, "Unified Ledger", (entry, side) => getNumberFromValue(entry[side]));
+  return preview;
+}
+
+function renderSelectedErpReport(reportType = getSelectedReportType()) {
+  renderReportTable("advanced-report-table", reportType);
 }
 
 function renderAdvancedReports() {
   const cards = document.getElementById("advanced-report-cards");
   if (cards) {
-    const profit = getReportRows("profitLoss").find((row) => row.metric === "Estimated Profit")?.amount || 0;
-    const stockValue = getReportRows("stock").reduce((sum, row) => sum + row.valuation, 0);
-    const salesPurchase = getReportRows("salesPurchase");
-    cards.innerHTML = reportCard("Profit / Loss", formatCurrency(profit), "Sales + income - purchases - expenses")
-      + reportCard("Stock Valuation", formatCurrency(stockValue), "Current stock × available cost")
-      + reportCard("Sales Total", formatCurrency(salesPurchase.find((row) => row.metric === "Sales Total")?.value || 0), "Firestore sales summary")
-      + reportCard("Purchase Total", formatCurrency(salesPurchase.find((row) => row.metric === "Purchase Total")?.value || 0), "Firestore purchase summary");
+    const balanceRows = getReportRows("balanceSheet");
+    const totalAssets = balanceRows.find((row) => row.account === "Total Assets")?.amount || 0;
+    const totalLiabilities = balanceRows.find((row) => row.account === "Total Liabilities + Equity")?.amount || 0;
+    const gstPayable = getReportRows("gst").find((row) => row.metric === "Estimated GST Payable")?.total || 0;
+    const alerts = getReportRows("reconciliation");
+    const ledgers = getReportRows("ledgerPreview");
+    cards.innerHTML = reportCard("Total Assets", formatCurrency(totalAssets), "Balance sheet assets")
+      + reportCard("Liabilities + Equity", formatCurrency(totalLiabilities), "Payables, capital and loans")
+      + reportCard("GST Payable", formatCurrency(gstPayable), "Output GST - input GST")
+      + reportCard("Reconciliation Alerts", String(alerts.length), "Stock, payable, receivable, ledger checks")
+      + reportCard("Ledger Preview Rows", String(ledgers.length), "Customer/supplier/stock/raw/unified ledgers");
   }
-  renderReportTable("advanced-report-table", "profitLoss");
+  renderSelectedErpReport();
+  renderReportTable("reconciliation-alerts-table", "reconciliation");
+  renderReportTable("ledger-preview-table", "ledgerPreview");
 }
 
 function renderGstReports() {
   const cards = document.getElementById("gst-report-cards");
   const rows = getReportRows("gst");
   if (cards) {
-    cards.innerHTML = rows.map((row) => reportCard(row.metric, formatCurrency(row.amount), "Estimated from Firestore invoice totals")).join("");
+    cards.innerHTML = rows.map((row) => reportCard(row.metric, formatCurrency(row.total), `${row.type}: Taxable ${formatCurrency(row.taxable)} / GST ${formatCurrency(row.gst)}`)).join("");
   }
   renderReportTable("gst-report-table", "gst");
 }
@@ -1650,7 +3235,8 @@ function printReportPdf(reportType) {
     return;
   }
   const headers = Object.keys(rows[0]);
-  const html = `<!doctype html><html><head><meta charset="utf-8"><title>${reportType} report</title><style>@page{size:A4;margin:12mm}body{font-family:Arial,sans-serif;color:#0f172a}h1{color:#0f766e}table{width:100%;border-collapse:collapse;font-size:12px}th,td{border:1px solid #cbd5e1;padding:8px;text-align:left}th{background:#f8fafc}</style></head><body><h1>${escapeHtml(reportType)} Firestore Report</h1><table><thead><tr>${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("")}</tr></thead><tbody>${rows.map((row) => `<tr>${headers.map((header) => `<td>${formatReportCell(row[header])}</td>`).join("")}</tr>`).join("")}</tbody></table></body></html>`;
+  const label = REPORT_LABELS[reportType] || reportType;
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(label)} report</title><style>@page{size:A4;margin:12mm}body{font-family:Arial,sans-serif;color:#0f172a}h1{color:#0f766e}table{width:100%;border-collapse:collapse;font-size:12px}th,td{border:1px solid #cbd5e1;padding:8px;text-align:left}th{background:#f8fafc}</style></head><body><h1>${escapeHtml(label)} Firestore Report</h1><table><thead><tr>${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("")}</tr></thead><tbody>${rows.map((row) => `<tr>${headers.map((header) => `<td>${formatReportCell(row[header])}</td>`).join("")}</tr>`).join("")}</tbody></table></body></html>`;
   const printWindow = window.open("", "_blank", "width=900,height=700");
   if (!printWindow) {
     showToast("Popup blocked. Please allow popups to print this report.", "error");
@@ -2337,14 +3923,16 @@ function renderAccountingSummary() {
   const income = getStoredRecords(KEYS.income);
   const cash = getStoredRecords(KEYS.cashBook);
   const bank = getStoredRecords(KEYS.bankBook);
+  const dailyAccounts = getStoredRecords(KEYS.dailyAccounts).filter((entry) => entry.status !== "Voided");
+  const financeAccounts = getStoredRecords(KEYS.financeAccounts);
 
-  const totIncome = income.reduce((sum, item) => sum + parseFloat(item.amount || 0), 0);
-  const totExpense = expenses.reduce((sum, item) => sum + parseFloat(item.amount || 0), 0);
+  const totIncome = income.reduce((sum, item) => sum + parseFloat(item.amount || 0), 0) + dailyAccounts.filter((entry) => entry.type === "Income").reduce((sum, item) => sum + parseFloat(item.amount || 0), 0);
+  const totExpense = expenses.reduce((sum, item) => sum + parseFloat(item.amount || 0), 0) + dailyAccounts.filter((entry) => entry.type === "Expense").reduce((sum, item) => sum + parseFloat(item.amount || 0), 0);
   const totSales = sales.reduce((sum, item) => sum + parseFloat(item.finalAmount || 0), 0);
   const totPurchase = purchases.reduce((sum, item) => sum + parseFloat(item.totalAmount || 0), 0);
   
-  const cashBal = cash.length > 0 ? parseFloat(cash[cash.length - 1].balance || 0) : 0;
-  const bankBal = bank.length > 0 ? parseFloat(bank[bank.length - 1].balance || 0) : 0;
+  const cashBal = financeAccounts.length ? financeAccounts.filter((account) => account.type === "Cash").reduce((sum, account) => sum + getFinanceAccountBalance(account), 0) : (cash.length > 0 ? parseFloat(cash[cash.length - 1].balance || 0) : 0);
+  const bankBal = financeAccounts.length ? financeAccounts.filter((account) => ["Bank", "UPI", "Card"].includes(account.type)).reduce((sum, account) => sum + getFinanceAccountBalance(account), 0) : (bank.length > 0 ? parseFloat(bank[bank.length - 1].balance || 0) : 0);
 
   // Simple Profit Estimate: Income - Expenses (or Sales - Cost of Goods Sold / Purchases - Expenses)
   // For the simple mockup version, we'll use: Total Income - Total Expense
@@ -2352,7 +3940,7 @@ function renderAccountingSummary() {
   
   // Pending sales and purchase payments
   const pendingSales = sales.filter(s => s.paymentStatus !== "Paid").reduce((sum, s) => sum + parseFloat(s.finalAmount || 0), 0);
-  const pendingPurchases = purchases.filter(p => p.paymentStatus !== "Paid").reduce((sum, p) => sum + parseFloat(p.totalAmount || 0), 0);
+  const pendingPurchases = purchases.filter(p => p.paymentStatus !== "Paid" && p.status !== "Voided").reduce((sum, p) => sum + parseFloat(p.balancePayable ?? p.totalAmount ?? 0), 0);
 
   document.getElementById("acc-tot-income").textContent = formatCurrency(totIncome);
   document.getElementById("acc-tot-expense").textContent = formatCurrency(totExpense);
@@ -2442,25 +4030,36 @@ function initWritableFormListeners() {
     key: KEYS.suppliers,
     submitButtonId: "supplier-submit-btn",
     validate: (data) => data.name && data.phone && data.place,
-    getData: () => ({
-      name: getValue("supp-name"),
-      phone: getValue("supp-phone"),
-      place: getValue("supp-place"),
-      address: getValue("supp-address"),
-      gst: getValue("supp-gst"),
-      itemSupplied: getValue("supp-item"),
-      terms: getValue("supp-terms"),
-      notes: getValue("supp-notes")
-    }),
+    getData: () => {
+      const openingPayable = getNumber("supp-opening-payable");
+      return {
+        name: getValue("supp-name"),
+        phone: getValue("supp-phone"),
+        place: getValue("supp-place"),
+        address: getValue("supp-address"),
+        gst: getValue("supp-gst"),
+        openingPayable,
+        currentPayable: getNumber("supp-current-payable") || openingPayable,
+        itemSupplied: getValue("supp-item"),
+        terms: getValue("supp-terms"),
+        notes: getValue("supp-notes")
+      };
+    },
     populate: (record) => {
       setValue("supp-name", record.name);
       setValue("supp-phone", record.phone);
       setValue("supp-place", record.place);
       setValue("supp-address", record.address);
       setValue("supp-gst", record.gst);
+      setValue("supp-opening-payable", record.openingPayable);
+      setValue("supp-current-payable", getSupplierComputedPayable(record));
       setValue("supp-item", record.itemSupplied);
       setValue("supp-terms", record.terms);
       setValue("supp-notes", record.notes);
+    },
+    afterSave: async (data, meta) => {
+      await reconcileSupplierOpeningLedger(data, meta);
+      refreshSupplierPurchaseOptions();
     }
   });
 
@@ -2497,27 +4096,34 @@ function initWritableFormListeners() {
     formId: "purchase-form",
     key: KEYS.purchases,
     submitButtonId: "purchase-submit-btn",
-    validate: (data) => data.date && data.invoice && data.supplier && data.item && data.qty > 0 && data.rate >= 0,
+    validate: (data) => data.date && data.invoice && data.supplier && data.rawMaterialId && data.qty > 0 && data.rate >= 0,
     getData: () => {
       const qty = getNumber("pur-qty");
       const rate = getNumber("pur-rate");
+      const totalAmount = qty * rate;
+      const paidAmount = Math.min(getNumber("pur-paid"), totalAmount);
       return {
         date: getValue("pur-date"),
         invoice: getValue("pur-invoice"),
         supplier: getValue("pur-supplier"),
+        rawMaterialId: getValue("pur-raw-material"),
         item: getValue("pur-item"),
+        itemName: getValue("pur-item"),
         qty,
         unit: getValue("pur-unit"),
         rate,
-        totalAmount: qty * rate,
+        totalAmount,
+        paidAmount,
+        balancePayable: Math.max(totalAmount - paidAmount, 0),
         paymentMode: getValue("pur-mode"),
-        paymentStatus: getValue("pur-status"),
+        paymentStatus: paidAmount <= 0 ? "Pending" : paidAmount >= totalAmount ? "Paid" : "Partial",
+        status: "Posted",
         notes: getValue("pur-notes")
       };
     },
     populate: populatePurchase,
     afterSave: async (data, meta) => {
-      await reconcileStockAndLedger(data, { ...meta, moduleName: "Purchase", stockName: data.item, stockDelta: data.qty, amount: data.totalAmount, direction: "out", reference: data.invoice });
+      await reconcilePurchasePayableAndRawStock(data, meta);
     }
   });
 
@@ -2539,6 +4145,37 @@ function initWritableFormListeners() {
       lastUpdated: getValue("stk-date")
     }),
     populate: populateInventory
+  });
+
+
+  setupFirestoreForm({
+    formId: "raw-material-form",
+    key: KEYS.rawMaterials,
+    submitButtonId: "raw-material-submit-btn",
+    validate: (data) => data.name && data.category && data.unit && data.currentStock >= 0 && data.minimumStock >= 0 && data.rate >= 0,
+    getData: () => {
+      const currentStock = getNumber("raw-current");
+      const minimumStock = getNumber("raw-minimum");
+      return {
+        name: getValue("raw-name"),
+        category: getValue("raw-category"),
+        unit: getValue("raw-unit"),
+        openingStock: getNumber("raw-opening"),
+        currentStock,
+        minimumStock,
+        rate: getNumber("raw-rate"),
+        expiryDate: getValue("raw-expiry"),
+        supplier: getValue("raw-supplier"),
+        batchNumber: getValue("raw-batch"),
+        status: currentStock <= minimumStock ? "Low Stock" : getValue("raw-status"),
+        notes: getValue("raw-notes")
+      };
+    },
+    populate: populateRawMaterial,
+    afterSave: async (data, meta) => {
+      await reconcileRawMaterialOpeningLedger(data, meta);
+      refreshProductionMaterialOptions();
+    }
   });
 
   setupFirestoreForm({
@@ -2601,12 +4238,15 @@ function initWritableFormListeners() {
         amount,
         deliveryCharge,
         expenseTotal: deliveryCharge,
+        expenseNote: getValue("ord-expense-note"),
+        expenses: deliveryCharge > 0 ? [{ date: getValue("ord-date"), amount: deliveryCharge, category: "Order Expense", notes: getValue("ord-expense-note") }] : [],
         totalPayable,
         paidAmount,
         balanceDue,
         advanceCredit,
         paymentStatus: getValue("ord-pstatus"),
         paymentMode: getValue("ord-payment-mode"),
+        paymentHistory: paidAmount > 0 ? [{ date: getValue("ord-date"), amount: paidAmount, mode: getValue("ord-payment-mode"), status: getValue("ord-pstatus"), notes: "Initial/updated order payment" }] : [],
         orderStatus: getValue("ord-ostatus"),
         address: getValue("ord-address"),
         notes: getValue("ord-notes"),
@@ -2616,6 +4256,7 @@ function initWritableFormListeners() {
     populate: populateOrders,
     afterSave: async (data, meta) => {
       await reconcileOrderInventoryAndLedger(data, { ...meta, moduleName: "Order", amount: data.paidAmount, direction: "in", reference: data.customer });
+      await syncOrderPaymentAndExpenseRecords(data, meta);
       await ensureCustomerFromOrder(data);
       if (data.advanceCredit > 0) {
         showToast(`Extra payment saved as party advance credit: ${formatCurrency(data.advanceCredit)}`, "info");
@@ -2737,25 +4378,162 @@ function initWritableFormListeners() {
     formId: "production-form",
     key: KEYS.production,
     submitButtonId: "production-submit-btn",
-    validate: (data) => data.batch && data.date && data.productName && data.quantityProduced > 0 && data.batchCost >= 0,
-    getData: () => ({
-      batch: getValue("prod-batch"),
-      date: getValue("prod-date"),
-      productName: getValue("prod-pname"),
-      rawMaterial: getValue("prod-raw"),
-      quantityProduced: getNumber("prod-qty"),
-      packingQty: getValue("prod-pack"),
-      wastage: getValue("prod-waste"),
-      batchCost: getNumber("prod-cost"),
-      staff: getValue("prod-staff"),
-      notes: getValue("prod-notes")
-    }),
+    validate: (data) => data.batch && data.date && data.productName && data.quantityProduced > 0 && data.rawMaterials.length > 0 && data.batchCost >= 0,
+    getData: () => {
+      const rawMaterials = getProductionMaterialsFromForm();
+      const batchCost = rawMaterials.reduce((sum, material) => sum + material.lineCost, 0);
+      const quantityProduced = getNumber("prod-qty");
+      return {
+        batch: getValue("prod-batch"),
+        date: getValue("prod-date"),
+        productName: getValue("prod-pname"),
+        rawMaterials,
+        rawMaterial: rawMaterials.map((material) => `${material.name} ${material.quantity} ${material.unit}`).join(", "),
+        quantityProduced,
+        packingQty: getValue("prod-pack"),
+        wastage: getValue("prod-waste"),
+        batchCost,
+        costPerUnit: quantityProduced > 0 ? batchCost / quantityProduced : 0,
+        staff: getValue("prod-staff"),
+        notes: getValue("prod-notes"),
+        status: "Posted"
+      };
+    },
     populate: populateProduction,
     afterSave: async (data, meta) => {
       await reconcileProductionStock(data, meta);
     },
     beforeDelete: async (record) => {
-      await reconcileProductionStock(null, { isDelete: true, previous: record });
+      await reconcileProductionStock(null, { isDelete: true, id: record.id, previous: record });
+    }
+  });
+
+
+  setupFirestoreForm({
+    formId: "manager-loan-form",
+    key: KEYS.managerLoans,
+    submitButtonId: "manager-loan-submit-btn",
+    validate: (data) => data.lender && data.purpose && data.principalAmount > 0 && data.date,
+    getData: () => ({
+      lender: getValue("loan-lender"),
+      contact: getValue("loan-contact"),
+      purpose: getValue("loan-purpose"),
+      principalAmount: getNumber("loan-principal"),
+      date: getValue("loan-date"),
+      interestRate: getNumber("loan-interest"),
+      status: getValue("loan-status"),
+      notes: getValue("loan-notes")
+    }),
+    populate: populateManagerLoan,
+    afterSave: async () => refreshLoanRepaymentOptions(),
+    beforeDelete: async (record) => {
+      const operations = [];
+      getLoanRepayments(record.id).forEach((repayment) => {
+        addLinkedLedgerDeleteOperations(operations, repayment.id);
+        addLinkedRecordsDeleteOperations(operations, KEYS.ledgerEntries, repayment.id);
+        operations.push({ type: "delete", collectionName: COLLECTIONS.loanRepayments, id: repayment.id });
+      });
+      addLinkedRecordsDeleteOperations(operations, KEYS.ledgerEntries, record.id);
+      if (operations.length) await commitBatchOperations(operations);
+    }
+  });
+
+  setupFirestoreForm({
+    formId: "loan-repayment-form",
+    key: KEYS.loanRepayments,
+    submitButtonId: "loan-repayment-submit-btn",
+    validate: (data) => data.loanId && data.amount > 0 && data.date,
+    getData: () => {
+      const loan = getLoanById(getValue("repayment-loan"));
+      return {
+        loanId: loan?.id || "",
+        loanLabel: loan ? `${loan.lender} - ${loan.purpose}` : "",
+        date: getValue("repayment-date"),
+        amount: getNumber("repayment-amount"),
+        paymentMode: getValue("repayment-mode"),
+        notes: getValue("repayment-notes")
+      };
+    },
+    populate: populateLoanRepayment,
+    afterSave: async (data, meta) => {
+      await reconcileLoanRepayment(data, meta);
+      await refreshLoanStatus(data.loanId, { repaymentId: meta.id, replacementAmount: data.amount });
+      refreshLoanRepaymentOptions();
+    },
+    beforeDelete: async (record) => {
+      await reconcileLoanRepayment(null, { isDelete: true, id: record.id, previous: record });
+      await refreshLoanStatus(record.loanId, { repaymentId: record.id, exclude: true });
+    }
+  });
+
+
+  setupFirestoreForm({
+    formId: "asset-form",
+    key: KEYS.assets,
+    submitButtonId: "asset-submit-btn",
+    validate: (data) => data.assetName && data.type && data.purchaseValue >= 0 && data.purchaseDate,
+    getData: () => ({
+      assetName: getValue("asset-name"),
+      type: getValue("asset-type"),
+      purchaseValue: getNumber("asset-value"),
+      purchaseDate: getValue("asset-date"),
+      vendor: getValue("asset-vendor"),
+      condition: getValue("asset-condition"),
+      status: getValue("asset-status"),
+      notes: getValue("asset-notes")
+    }),
+    populate: populateAsset,
+    afterSave: async (data, meta) => {
+      await reconcileAssetLedger(data, meta);
+    },
+    beforeDelete: async (record) => {
+      await reconcileAssetLedger(null, { isDelete: true, id: record.id, previous: record });
+    }
+  });
+
+  setupFirestoreForm({
+    formId: "employee-form",
+    key: KEYS.employees,
+    submitButtonId: "employee-submit-btn",
+    validate: (data) => data.name && data.phone && data.role && data.salaryRate >= 0,
+    getData: () => ({
+      name: getValue("emp-name"),
+      phone: getValue("emp-phone"),
+      role: getValue("emp-role"),
+      salaryType: getValue("emp-salary-type"),
+      salaryRate: getNumber("emp-salary-rate"),
+      joiningDate: getValue("emp-joining-date"),
+      status: getValue("emp-status"),
+      notes: getValue("emp-notes")
+    }),
+    populate: populateEmployee,
+    afterSave: async () => refreshSalaryEmployeeOptions()
+  });
+
+  setupFirestoreForm({
+    formId: "salary-payment-form",
+    key: KEYS.salaryPayments,
+    submitButtonId: "salary-payment-submit-btn",
+    validate: (data) => data.employeeId && data.period && data.amount > 0 && data.paymentDate,
+    getData: () => {
+      const employee = getEmployeeById(getValue("salary-employee"));
+      return {
+        employeeId: employee?.id || "",
+        employeeName: employee?.name || "",
+        period: getValue("salary-period"),
+        amount: getNumber("salary-amount"),
+        paymentMode: getValue("salary-mode"),
+        paymentDate: getValue("salary-date"),
+        status: getValue("salary-status"),
+        notes: getValue("salary-notes")
+      };
+    },
+    populate: populateSalaryPayment,
+    afterSave: async (data, meta) => {
+      await reconcileSalaryPayment(data, meta);
+    },
+    beforeDelete: async (record) => {
+      await reconcileSalaryPayment(null, { isDelete: true, id: record.id, previous: record });
     }
   });
 
@@ -2763,27 +4541,14 @@ function initWritableFormListeners() {
     formId: "sharing-form",
     key: KEYS.sharing,
     submitButtonId: "sharing-submit-btn",
-    validate: (data) => data.period && data.investor && data.share > 0 && data.totalProfit >= 0,
-    getData: () => {
-      const totalProfit = getNumber("shr-profit");
-      const share = getNumber("shr-percentage");
-      return {
-        period: getValue("shr-period"),
-        totalProfit,
-        investor: getValue("shr-investor"),
-        share,
-        amount: (totalProfit * share) / 100,
-        status: getValue("shr-status"),
-        date: getValue("shr-date"),
-        notes: getValue("shr-notes")
-      };
-    },
+    validate: (data) => data.fromDate && data.toDate && data.investorShares?.length > 0 && data.netProfit >= 0,
+    getData: getProfitDistributionFormData,
     populate: populateSharing,
     afterSave: async (data, meta) => {
       await reconcileProfitSharingLedger(data, meta);
     },
     beforeDelete: async (record) => {
-      await reconcileProfitSharingLedger(null, { isDelete: true, previous: record });
+      await reconcileProfitSharingLedger(null, { isDelete: true, id: record.id, previous: record });
     }
   });
 }
@@ -2819,6 +4584,11 @@ function setupFirestoreForm(config) {
       }
       currentEditId = null;
       form.reset();
+      if (config.formId === "production-form") {
+        document.getElementById("production-materials-container").innerHTML = "";
+        addProductionMaterialRow();
+        recalculateProductionCost();
+      }
       if (button) button.textContent = "Save Record";
       await refreshActiveData();
     } catch (err) {
@@ -2953,28 +4723,561 @@ async function reconcileOrderInventoryAndLedger(data, meta) {
   if (operations.length) await commitBatchOperations(operations);
 }
 
-async function reconcileProductionStock(data, meta) {
+async function syncOrderPaymentAndExpenseRecords(data, meta) {
+  const sourceId = meta.id || meta.previous?.id;
+  if (!sourceId) return;
   const operations = [];
-  addStockReversalOperations(operations, meta.previous, "Production");
-  if (!meta.isDelete && data) {
-    addStockApplyOperations(operations, data.productName, data.quantityProduced, "Production", data.batch);
+  addLinkedRecordsDeleteOperations(operations, KEYS.orderPayments, sourceId);
+  addLinkedRecordsDeleteOperations(operations, KEYS.orderExpenses, sourceId);
+  if (getNumberFromValue(data.paidAmount) > 0) {
+    operations.push({ type: "set", collectionName: COLLECTIONS.orderPayments, payload: {
+      sourceId, orderId: sourceId, date: data.date, amount: data.paidAmount, mode: data.paymentMode, status: data.paymentStatus, customer: data.customer, phone: data.phone, notes: "Order payment snapshot"
+    }});
+  }
+  if (getNumberFromValue(data.deliveryCharge) > 0) {
+    operations.push({ type: "set", collectionName: COLLECTIONS.orderExpenses, payload: {
+      sourceId, orderId: sourceId, date: data.date, amount: data.deliveryCharge, category: "Order Expense", customer: data.customer, notes: data.expenseNote || data.notes || "Order expense"
+    }});
   }
   if (operations.length) await commitBatchOperations(operations);
 }
 
-async function reconcileProfitSharingLedger(data, meta) {
+async function reconcileSupplierOpeningLedger(data, meta) {
   const operations = [];
-  addLinkedLedgerDeleteOperations(operations, meta.id || meta.previous?.id);
-  if (!meta.isDelete && data) {
-    addLinkedLedgerCreateOperation(operations, data, {
-      ...meta,
-      moduleName: "Profit Sharing",
-      amount: data.amount,
-      direction: "out",
-      reference: `${data.period} - ${data.investor}`
+  addLinkedSupplierLedgerDeleteOperations(operations, meta.id || meta.previous?.id);
+  if (!meta.isDelete && data && getNumberFromValue(data.openingPayable) > 0) {
+    addSupplierLedgerOperation(operations, {
+      sourceId: meta.id,
+      supplier: { id: meta.id, name: data.name },
+      date: new Date().toISOString().slice(0, 10),
+      type: "opening",
+      amount: data.openingPayable,
+      balanceDelta: data.openingPayable,
+      reference: "Opening Payable",
+      notes: data.notes || "Supplier opening payable"
     });
   }
   if (operations.length) await commitBatchOperations(operations);
+}
+
+async function reconcilePurchasePayableAndRawStock(data, meta) {
+  const operations = [];
+  const sourceId = meta.id || meta.previous?.id;
+  addLinkedMovementDeleteOperations(operations, sourceId);
+  addLinkedSupplierLedgerDeleteOperations(operations, sourceId);
+  if (meta.previous?.status !== "Voided") addPurchaseReversalOperations(operations, meta.previous);
+  if (!meta.isDelete && data) addPurchaseApplyOperations(operations, data, sourceId);
+  if (operations.length) await commitBatchOperations(operations);
+}
+
+function addPurchaseReversalOperations(operations, previous) {
+  if (!previous) return;
+  addRawMaterialStockOperation(operations, previous.rawMaterialId, previous.item || previous.itemName, -getNumberFromValue(previous.qty), "Purchase reversal", previous.invoice, previous.id, {
+    materialId: previous.rawMaterialId,
+    name: previous.item || previous.itemName,
+    quantity: previous.qty,
+    unit: previous.unit,
+    rate: previous.rate
+  });
+  addSupplierPayableOperation(operations, previous.supplier, -getNumberFromValue(previous.balancePayable));
+}
+
+function addPurchaseApplyOperations(operations, data, sourceId) {
+  addRawMaterialStockOperation(operations, data.rawMaterialId, data.item, data.qty, "Purchase stock in", data.invoice, sourceId, {
+    materialId: data.rawMaterialId,
+    name: data.item,
+    quantity: data.qty,
+    unit: data.unit,
+    rate: data.rate
+  });
+  const supplier = findSupplierByName(data.supplier);
+  addSupplierPayableOperation(operations, data.supplier, data.balancePayable);
+  addSupplierLedgerOperation(operations, {
+    sourceId,
+    supplier,
+    supplierName: data.supplier,
+    date: data.date,
+    type: "purchase",
+    amount: data.totalAmount,
+    balanceDelta: data.totalAmount,
+    reference: data.invoice,
+    notes: `Purchase invoice for ${data.item}`,
+    paymentMode: data.paymentMode
+  });
+  if (data.paidAmount > 0) {
+    addSupplierLedgerOperation(operations, {
+      sourceId,
+      supplier,
+      supplierName: data.supplier,
+      date: data.date,
+      type: "payment",
+      amount: data.paidAmount,
+      balanceDelta: -data.paidAmount,
+      reference: data.invoice,
+      notes: `Payment recorded against ${data.invoice}`,
+      paymentMode: data.paymentMode
+    });
+  }
+  addUnifiedLedgerCreateOperation(operations, data, {
+    sourceId,
+    moduleName: "Purchase",
+    amount: data.totalAmount,
+    direction: "journal",
+    reference: data.invoice,
+    description: `Purchase invoice ${data.invoice} posted for ${data.item}`
+  });
+}
+
+function addSupplierLedgerOperation(operations, meta) {
+  const supplier = meta.supplier || findSupplierByName(meta.supplierName);
+  operations.push({
+    type: "set",
+    collectionName: COLLECTIONS.supplierLedger,
+    payload: {
+      sourceId: meta.sourceId || null,
+      supplierId: supplier?.id || null,
+      supplierName: supplier?.name || meta.supplierName || "",
+      date: meta.date || new Date().toISOString().slice(0, 10),
+      type: meta.type,
+      amount: getNumberFromValue(meta.amount),
+      balanceDelta: getNumberFromValue(meta.balanceDelta),
+      reference: meta.reference || "",
+      paymentMode: meta.paymentMode || "",
+      notes: meta.notes || ""
+    }
+  });
+}
+
+function addSupplierPayableOperation(operations, supplierName, balanceDelta) {
+  if (!supplierName || !balanceDelta) return;
+  const supplier = findSupplierByName(supplierName);
+  if (!supplier?.id) return;
+  const existingOperation = operations.find((operation) => operation.type === "update" && operation.collectionName === COLLECTIONS.suppliers && operation.id === supplier.id);
+  const basePayable = existingOperation ? getNumberFromValue(existingOperation.payload.currentPayable) : getSupplierComputedPayable(supplier);
+  const payload = existingOperation?.payload || {};
+  payload.currentPayable = Math.max(basePayable + balanceDelta, 0);
+  payload.lastPayableUpdate = new Date().toISOString().slice(0, 10);
+  if (!existingOperation) operations.push({ type: "update", collectionName: COLLECTIONS.suppliers, id: supplier.id, payload });
+}
+
+function addLinkedSupplierLedgerDeleteOperations(operations, sourceId) {
+  if (!sourceId) return;
+  getStoredRecords(KEYS.supplierLedger)
+    .filter((record) => record.sourceId === sourceId)
+    .forEach((record) => operations.push({ type: "delete", collectionName: COLLECTIONS.supplierLedger, id: record.id }));
+}
+
+function findSupplierByName(name) {
+  return getStoredRecords(KEYS.suppliers).find((supplier) => (supplier.name || "").toLowerCase() === String(name || "").toLowerCase());
+}
+
+async function voidPurchase(id) {
+  const purchase = getStoredRecords(KEYS.purchases).find((record) => record.id === id);
+  if (!purchase || purchase.status === "Voided") return;
+  if (!confirm("Void this purchase invoice and reverse raw material stock/payables?")) return;
+  try {
+    await reconcilePurchasePayableAndRawStock(null, { isDelete: true, id, previous: purchase });
+    await updateCollectionRecord(COLLECTIONS.purchases, id, { status: "Voided", paymentStatus: "Voided", voidedAt: new Date().toISOString() });
+    showToast("Purchase voided and ledger reversed.", "success");
+    await refreshActiveData();
+  } catch (err) {
+    console.error("Purchase void failed", err);
+    showToast(getFirebaseErrorMessage(err, "Unable to void purchase."), "error");
+  }
+}
+
+
+async function reconcileRawMaterialOpeningLedger(data, meta) {
+  const operations = [];
+  addLinkedMovementDeleteOperations(operations, meta.id || meta.previous?.id);
+  if (!meta.isDelete && data) {
+    addRawMaterialLedgerCreateOperation(operations, data, {
+      sourceId: meta.id,
+      movementType: "opening",
+      quantityDelta: getNumberFromValue(data.openingStock),
+      sourceType: "Raw Material Opening",
+      sourceRef: data.batchNumber || data.name,
+      notes: "Opening stock recorded from raw material master"
+    });
+  }
+  if (operations.length) await commitBatchOperations(operations);
+}
+
+async function reconcileProductionStock(data, meta) {
+  const operations = [];
+  const sourceId = meta.id || meta.previous?.id;
+
+  addLinkedMovementDeleteOperations(operations, sourceId);
+  addProductionReversalOperations(operations, meta.previous, sourceId);
+
+  if (!meta.isDelete && data) {
+    addProductionApplyOperations(operations, data, sourceId);
+  }
+
+  if (operations.length) await commitBatchOperations(operations);
+}
+
+function addProductionReversalOperations(operations, previous, sourceId) {
+  if (!previous) return;
+  const materials = getProductionMaterials(previous);
+  materials.forEach((material) => {
+    addRawMaterialStockOperation(operations, material.materialId, material.name, material.quantity, "Production reversal", previous.batch, sourceId, material);
+  });
+  addStockApplyOperations(operations, previous.productName, -getNumberFromValue(previous.quantityProduced), "Production reversal", previous.batch);
+}
+
+function addProductionApplyOperations(operations, data, sourceId) {
+  const materials = getProductionMaterials(data);
+  materials.forEach((material) => {
+    addRawMaterialStockOperation(operations, material.materialId, material.name, -material.quantity, "Production consumption", data.batch, sourceId, material);
+  });
+  addStockApplyOperations(operations, data.productName, data.quantityProduced, "Production finished goods", data.batch);
+  addStockLedgerCreateOperation(operations, data, {
+    sourceId,
+    itemName: data.productName,
+    movementType: "production_in",
+    quantityDelta: data.quantityProduced,
+    unit: "Unit",
+    rate: data.costPerUnit,
+    amount: data.batchCost,
+    sourceType: "Production",
+    sourceRef: data.batch
+  });
+  addUnifiedLedgerCreateOperation(operations, data, {
+    sourceId,
+    moduleName: "Production",
+    amount: data.batchCost,
+    direction: "journal",
+    reference: data.batch,
+    description: `Production batch ${data.batch} posted for ${data.productName}`
+  });
+}
+
+function getProductionMaterials(record = {}) {
+  if (Array.isArray(record.rawMaterials) && record.rawMaterials.length) {
+    return record.rawMaterials.map((material) => ({
+      materialId: material.materialId,
+      name: material.name,
+      quantity: getNumberFromValue(material.quantity || material.qty),
+      unit: material.unit || "",
+      rate: getNumberFromValue(material.rate),
+      lineCost: getNumberFromValue(material.lineCost)
+    })).filter((material) => material.name && material.quantity > 0);
+  }
+  return [{ name: record.rawMaterial, quantity: 0, unit: "", rate: 0, lineCost: 0 }].filter((material) => material.name && material.quantity > 0);
+}
+
+function addRawMaterialStockOperation(operations, materialId, materialName, quantityDelta, sourceType, sourceRef, sourceId, material = {}) {
+  if (!quantityDelta) return;
+  const rawMaterial = findRawMaterialRecord(materialId, materialName);
+  if (!rawMaterial?.id) return;
+  const existingOperation = operations.find((operation) =>
+    operation.type === "update"
+    && operation.collectionName === COLLECTIONS.rawMaterials
+    && operation.id === rawMaterial.id
+  );
+  const payload = existingOperation?.payload || {
+    currentStock: getNumberFromValue(rawMaterial.currentStock),
+    status: rawMaterial.status || "Active"
+  };
+  const nextStock = Math.max(getNumberFromValue(payload.currentStock) + quantityDelta, 0);
+  payload.currentStock = nextStock;
+  payload.status = nextStock <= getNumberFromValue(rawMaterial.minimumStock) ? "Low Stock" : "Active";
+  payload.lastUpdated = new Date().toISOString().slice(0, 10);
+  payload.lastStockSource = sourceType;
+  payload.lastStockRef = sourceRef || "";
+  if (!existingOperation) {
+    operations.push({ type: "update", collectionName: COLLECTIONS.rawMaterials, id: rawMaterial.id, payload });
+  }
+  addRawMaterialLedgerCreateOperation(operations, rawMaterial, {
+    sourceId,
+    movementType: quantityDelta >= 0 ? "in" : "out",
+    quantityDelta,
+    sourceType,
+    sourceRef,
+    material,
+    notes: sourceType
+  });
+}
+
+function findRawMaterialRecord(materialId, materialName) {
+  return getStoredRecords(KEYS.rawMaterials).find((material) =>
+    material.id === materialId || (material.name || "").toLowerCase() === String(materialName || "").toLowerCase()
+  );
+}
+
+function addLinkedMovementDeleteOperations(operations, sourceId) {
+  if (!sourceId) return;
+  [KEYS.rawMaterialLedger, KEYS.stockLedger, KEYS.ledgerEntries].forEach((key) => {
+    getStoredRecords(key)
+      .filter((record) => record.sourceId === sourceId || record.referenceId === sourceId)
+      .forEach((record) => operations.push({ type: "delete", collectionName: COLLECTION_BY_KEY[key], id: record.id }));
+  });
+}
+
+function addRawMaterialLedgerCreateOperation(operations, rawMaterial, meta) {
+  operations.push({
+    type: "set",
+    collectionName: COLLECTIONS.rawMaterialLedger,
+    payload: {
+      sourceId: meta.sourceId || null,
+      materialId: rawMaterial.id || meta.material?.materialId || null,
+      materialName: rawMaterial.name || meta.material?.name || "",
+      movementType: meta.movementType,
+      quantityDelta: meta.quantityDelta,
+      quantityIn: Math.max(meta.quantityDelta, 0),
+      quantityOut: Math.max(-meta.quantityDelta, 0),
+      unit: rawMaterial.unit || meta.material?.unit || "",
+      rate: getNumberFromValue(rawMaterial.rate || meta.material?.rate),
+      amount: Math.abs(meta.quantityDelta) * getNumberFromValue(rawMaterial.rate || meta.material?.rate),
+      sourceType: meta.sourceType,
+      sourceRef: meta.sourceRef || "",
+      notes: meta.notes || "",
+      date: new Date().toISOString().slice(0, 10)
+    }
+  });
+}
+
+function addStockLedgerCreateOperation(operations, data, meta) {
+  operations.push({
+    type: "set",
+    collectionName: COLLECTIONS.stockLedger,
+    payload: {
+      sourceId: meta.sourceId || null,
+      itemName: meta.itemName,
+      movementType: meta.movementType,
+      quantityDelta: meta.quantityDelta,
+      quantityIn: Math.max(meta.quantityDelta, 0),
+      quantityOut: Math.max(-meta.quantityDelta, 0),
+      unit: meta.unit || "",
+      rate: getNumberFromValue(meta.rate),
+      amount: getNumberFromValue(meta.amount),
+      sourceType: meta.sourceType,
+      sourceRef: meta.sourceRef || "",
+      date: data.date || new Date().toISOString().slice(0, 10)
+    }
+  });
+}
+
+function addUnifiedLedgerCreateOperation(operations, data, meta) {
+  operations.push({
+    type: "set",
+    collectionName: COLLECTIONS.ledgerEntries,
+    payload: {
+      sourceId: meta.sourceId || null,
+      date: data.date || new Date().toISOString().slice(0, 10),
+      module: meta.moduleName,
+      account: "Production / Inventory",
+      type: meta.direction || "journal",
+      debit: getNumberFromValue(meta.amount),
+      credit: getNumberFromValue(meta.amount),
+      referenceCollection: COLLECTIONS.production,
+      referenceId: meta.sourceId || null,
+      description: meta.description || "",
+      status: "posted"
+    }
+  });
+}
+
+
+async function reconcileLoanRepayment(data, meta) {
+  const operations = [];
+  const sourceId = meta.id || meta.previous?.id;
+  addLinkedLedgerDeleteOperations(operations, sourceId);
+  addLinkedRecordsDeleteOperations(operations, KEYS.ledgerEntries, sourceId);
+  if (!meta.isDelete && data?.loanId && data.amount > 0) {
+    const loan = getLoanById(data.loanId);
+    operations.push({ type: "set", collectionName: COLLECTIONS.ledgerEntries, payload: {
+      sourceId,
+      date: data.date,
+      module: "Manager Loans",
+      account: "Loan Repayment",
+      type: "liability-payment",
+      debit: getNumberFromValue(data.amount),
+      credit: 0,
+      referenceCollection: COLLECTIONS.loanRepayments,
+      referenceId: sourceId,
+      description: `Loan repayment to ${loan?.lender || data.loanLabel || 'lender'}`,
+      status: "posted"
+    }});
+    addLinkedLedgerCreateOperation(operations, {
+      ...data,
+      mode: data.paymentMode,
+      date: data.date,
+      desc: `Loan repayment - ${loan?.lender || data.loanLabel || data.loanId}`,
+      status: "Paid"
+    }, {
+      id: sourceId,
+      moduleName: "Manager Loans",
+      amount: data.amount,
+      direction: "out",
+      reference: loan?.lender || data.loanLabel || data.loanId
+    });
+  }
+  if (operations.length) await commitBatchOperations(operations);
+}
+
+function getProjectedLoanOutstanding(loanId, options = {}) {
+  const loan = getLoanById(loanId);
+  if (!loan) return 0;
+  const paid = getStoredRecords(KEYS.loanRepayments)
+    .filter((repayment) => repayment.loanId === loanId && repayment.status !== "Voided")
+    .reduce((sum, repayment) => {
+      if (options.repaymentId && repayment.id === options.repaymentId) {
+        return options.exclude ? sum : sum + getNumberFromValue(options.replacementAmount);
+      }
+      return sum + getNumberFromValue(repayment.amount);
+    }, options.repaymentId && !getStoredRecords(KEYS.loanRepayments).some((repayment) => repayment.id === options.repaymentId) ? getNumberFromValue(options.replacementAmount) : 0);
+  return Math.max(getNumberFromValue(loan.principalAmount) - paid, 0);
+}
+
+async function refreshLoanStatus(loanId, options = {}) {
+  const loan = getLoanById(loanId);
+  if (!loan || loan.status === "Voided") return;
+  const outstanding = getProjectedLoanOutstanding(loanId, options);
+  const nextStatus = outstanding <= 0 ? "Closed" : "Active";
+  if (loan.status !== nextStatus) {
+    await updateCollectionRecord(COLLECTIONS.managerLoans, loanId, { status: nextStatus, outstandingBalance: outstanding });
+  } else {
+    await updateCollectionRecord(COLLECTIONS.managerLoans, loanId, { outstandingBalance: outstanding });
+  }
+}
+
+
+async function reconcileAssetLedger(data, meta) {
+  const operations = [];
+  const sourceId = meta.id || meta.previous?.id;
+  addLinkedRecordsDeleteOperations(operations, KEYS.ledgerEntries, sourceId);
+  if (!meta.isDelete && !["Voided", "Cancelled"].includes(data?.status)) {
+    operations.push({ type: "set", collectionName: COLLECTIONS.ledgerEntries, payload: {
+      sourceId,
+      date: data.purchaseDate,
+      module: "Assets & Machinery",
+      account: "Fixed Assets",
+      type: "asset-purchase",
+      debit: getNumberFromValue(data.purchaseValue),
+      credit: 0,
+      referenceCollection: COLLECTIONS.assets,
+      referenceId: sourceId,
+      description: `${data.assetName} purchased from ${data.vendor || 'vendor not specified'}`,
+      status: data.status === "Voided" ? "voided" : "posted"
+    }});
+  }
+  if (operations.length) await commitBatchOperations(operations);
+}
+
+
+async function reconcileSalaryPayment(data, meta) {
+  const operations = [];
+  const sourceId = meta.id || meta.previous?.id;
+  addLinkedLedgerDeleteOperations(operations, sourceId);
+  addLinkedRecordsDeleteOperations(operations, KEYS.ledgerEntries, sourceId);
+  addLinkedRecordsDeleteOperations(operations, KEYS.expenses, sourceId);
+  if (!meta.isDelete && !["Voided", "Cancelled"].includes(data?.status)) {
+    operations.push({ type: "set", collectionName: COLLECTIONS.expenses, payload: {
+      sourceId,
+      date: data.paymentDate,
+      category: "Salary",
+      desc: `Salary payment - ${data.employeeName} (${data.period})`,
+      amount: data.amount,
+      mode: data.paymentMode,
+      paidTo: data.employeeName,
+      receipt: sourceId,
+      notes: data.notes,
+      status: data.status
+    }});
+    operations.push({ type: "set", collectionName: COLLECTIONS.ledgerEntries, payload: {
+      sourceId,
+      date: data.paymentDate,
+      module: "Employees & Salary",
+      account: "Salary Expense",
+      type: "expense",
+      debit: getNumberFromValue(data.amount),
+      credit: 0,
+      referenceCollection: COLLECTIONS.salaryPayments,
+      referenceId: sourceId,
+      description: `Salary ${data.period} paid to ${data.employeeName}`,
+      status: data.status === "Pending" ? "pending" : "posted"
+    }});
+    addLinkedLedgerCreateOperation(operations, {
+      ...data,
+      date: data.paymentDate,
+      mode: data.paymentMode,
+      desc: `Salary payment - ${data.employeeName}`,
+      paymentStatus: data.status
+    }, {
+      id: sourceId,
+      moduleName: "Salary",
+      amount: data.amount,
+      direction: "out",
+      reference: `${data.employeeName} - ${data.period}`
+    });
+  }
+  if (operations.length) await commitBatchOperations(operations);
+}
+
+
+async function reconcileProfitSharingLedger(data, meta) {
+  const operations = [];
+  const sourceId = meta.id || meta.previous?.id;
+  addLinkedLedgerDeleteOperations(operations, sourceId);
+  addLinkedRecordsDeleteOperations(operations, KEYS.ledgerEntries, sourceId);
+  addLinkedRecordsDeleteOperations(operations, KEYS.investorExpenses, sourceId);
+  addLinkedRecordsDeleteOperations(operations, KEYS.auditLogs, sourceId);
+  if (!meta.isDelete && !meta.isVoid && data?.status !== "Voided") {
+    (data.investorShares || []).forEach((share) => {
+      operations.push({ type: "set", collectionName: COLLECTIONS.investorExpenses, payload: {
+        sourceId,
+        investorId: share.investorId,
+        investorName: share.investorName,
+        investorEmail: share.investorEmail || "",
+        purpose: `Profit distribution ${data.period}`,
+        amount: share.amount,
+        notes: data.notes || "Auto-created from profit sharing distribution",
+        status: data.status === "Paid" ? "approved" : "pending",
+        date: data.date,
+        source: "profit-distribution"
+      }});
+    });
+    operations.push({ type: "set", collectionName: COLLECTIONS.ledgerEntries, payload: {
+      sourceId,
+      date: data.date || new Date().toISOString().slice(0, 10),
+      module: "Profit Sharing",
+      account: "Investor Profit Distribution",
+      type: "expense",
+      debit: getNumberFromValue(data.distributableProfit),
+      credit: 0,
+      referenceCollection: COLLECTIONS.profitDistributions,
+      referenceId: sourceId,
+      description: `Profit distribution for ${data.period}`,
+      status: "posted"
+    }});
+    operations.push({ type: "set", collectionName: COLLECTIONS.auditLogs, payload: {
+      sourceId,
+      action: "profit_distribution_calculated",
+      module: "Profit Sharing",
+      recordId: sourceId,
+      summary: `Profit distribution ${data.period}: ${formatCurrency(data.distributableProfit)}`,
+      before: meta.previous || null,
+      after: data,
+      metadata: {
+        grossIncome: data.grossIncome,
+        totalExpense: data.totalExpense,
+        netProfit: data.netProfit,
+        reserveAmount: data.reserveAmount,
+        investorCount: data.investorShares?.length || 0
+      },
+      eventAt: new Date().toISOString()
+    }});
+  }
+  if (operations.length) await commitBatchOperations(operations);
+}
+
+function addLinkedRecordsDeleteOperations(operations, key, sourceId) {
+  if (!sourceId) return;
+  getStoredRecords(key)
+    .filter((record) => record.sourceId === sourceId)
+    .forEach((record) => operations.push({ type: "delete", collectionName: COLLECTION_BY_KEY[key], id: record.id }));
 }
 
 function addStockReversalOperations(operations, previous, moduleName) {
@@ -3103,7 +5406,28 @@ function addStockApplyOperations(operations, itemName, quantityDelta, sourceType
   const inventoryRecord = getStoredRecords(KEYS.inventory).find((item) =>
     (item.name || "").toLowerCase() === itemName.toLowerCase()
   );
-  if (!inventoryRecord?.id) return;
+  if (!inventoryRecord?.id) {
+    if (quantityDelta <= 0) return;
+    operations.push({
+      type: "set",
+      collectionName: COLLECTIONS.inventory,
+      payload: {
+        name: itemName,
+        category: "Finished Product",
+        type: "Finished Product",
+        openingStock: 0,
+        stockIn: quantityDelta,
+        stockOut: 0,
+        currentStock: quantityDelta,
+        unit: "Unit",
+        minAlert: 0,
+        lastUpdated: new Date().toISOString().slice(0, 10),
+        lastStockSource: sourceType,
+        lastStockRef: sourceRef || ""
+      }
+    });
+    return;
+  }
 
   const currentStock = getNumberFromValue(inventoryRecord.currentStock);
   const stockIn = Math.max(quantityDelta, 0);
@@ -3289,12 +5613,15 @@ function getFormConfigForKey(key) {
     },
     [KEYS.suppliers]: {
       submitButtonId: "supplier-submit-btn",
+      beforeDelete: (record) => reconcileSupplierOpeningLedger(null, { isDelete: true, id: record.id, previous: record }),
       populate: (record) => {
         setValue("supp-name", record.name);
         setValue("supp-phone", record.phone);
         setValue("supp-place", record.place);
         setValue("supp-address", record.address);
         setValue("supp-gst", record.gst);
+        setValue("supp-opening-payable", record.openingPayable);
+        setValue("supp-current-payable", getSupplierComputedPayable(record));
         setValue("supp-item", record.itemSupplied);
         setValue("supp-terms", record.terms);
         setValue("supp-notes", record.notes);
@@ -3317,9 +5644,14 @@ function getFormConfigForKey(key) {
     [KEYS.purchases]: {
       submitButtonId: "purchase-submit-btn",
       populate: populatePurchase,
-      beforeDelete: (record) => reconcileStockAndLedger(null, { id: record.id, previous: record, moduleName: "Purchase" })
+      beforeDelete: (record) => reconcilePurchasePayableAndRawStock(null, { isDelete: true, id: record.id, previous: record })
     },
     [KEYS.inventory]: { submitButtonId: "inventory-submit-btn", populate: populateInventory },
+    [KEYS.rawMaterials]: {
+      submitButtonId: "raw-material-submit-btn",
+      populate: populateRawMaterial,
+      beforeDelete: (record) => reconcileRawMaterialOpeningLedger(null, { isDelete: true, id: record.id, previous: record })
+    },
     [KEYS.sales]: {
       submitButtonId: "sales-submit-btn",
       populate: populateSales,
@@ -3351,15 +5683,35 @@ function getFormConfigForKey(key) {
       populate: populateBankBook,
       beforeDelete: (record) => reconcileLedgerBalancesAfterDelete(KEYS.bankBook, record)
     },
+    [KEYS.assets]: {
+      submitButtonId: "asset-submit-btn",
+      populate: populateAsset,
+      beforeDelete: (record) => reconcileAssetLedger(null, { isDelete: true, id: record.id, previous: record })
+    },
+    [KEYS.managerLoans]: {
+      submitButtonId: "manager-loan-submit-btn",
+      populate: populateManagerLoan
+    },
+    [KEYS.loanRepayments]: {
+      submitButtonId: "loan-repayment-submit-btn",
+      populate: populateLoanRepayment,
+      beforeDelete: (record) => reconcileLoanRepayment(null, { isDelete: true, id: record.id, previous: record })
+    },
+    [KEYS.employees]: { submitButtonId: "employee-submit-btn", populate: populateEmployee },
+    [KEYS.salaryPayments]: {
+      submitButtonId: "salary-payment-submit-btn",
+      populate: populateSalaryPayment,
+      beforeDelete: (record) => reconcileSalaryPayment(null, { isDelete: true, id: record.id, previous: record })
+    },
     [KEYS.production]: {
       submitButtonId: "production-submit-btn",
       populate: populateProduction,
-      beforeDelete: (record) => reconcileProductionStock(null, { isDelete: true, previous: record })
+      beforeDelete: (record) => reconcileProductionStock(null, { isDelete: true, id: record.id, previous: record })
     },
     [KEYS.sharing]: {
       submitButtonId: "sharing-submit-btn",
       populate: populateSharing,
-      beforeDelete: (record) => reconcileProfitSharingLedger(null, { isDelete: true, previous: record })
+      beforeDelete: (record) => reconcileProfitSharingLedger(null, { isDelete: true, id: record.id, previous: record })
     }
   };
   return formMap[key];
@@ -3369,11 +5721,15 @@ function populatePurchase(record) {
   setValue("pur-date", record.date);
   setValue("pur-invoice", record.invoice);
   setValue("pur-supplier", record.supplier);
-  setValue("pur-item", record.item);
+  refreshSupplierPurchaseOptions();
+  setValue("pur-raw-material", record.rawMaterialId);
+  setValue("pur-item", record.item || record.itemName);
   setValue("pur-qty", record.qty);
   setValue("pur-unit", record.unit);
   setValue("pur-rate", record.rate);
   setValue("pur-total", record.totalAmount);
+  setValue("pur-paid", record.paidAmount);
+  setValue("pur-balance", record.balancePayable);
   setValue("pur-mode", record.paymentMode);
   setValue("pur-status", record.paymentStatus);
   setValue("pur-notes", record.notes);
@@ -3390,6 +5746,21 @@ function populateInventory(record) {
   setValue("stk-unit", record.unit);
   setValue("stk-min", record.minAlert);
   setValue("stk-date", record.lastUpdated);
+}
+
+function populateRawMaterial(record) {
+  setValue("raw-name", record.name);
+  setValue("raw-category", record.category);
+  setValue("raw-unit", record.unit);
+  setValue("raw-opening", record.openingStock);
+  setValue("raw-current", record.currentStock);
+  setValue("raw-minimum", record.minimumStock);
+  setValue("raw-rate", record.rate);
+  setValue("raw-expiry", record.expiryDate);
+  setValue("raw-supplier", record.supplier);
+  setValue("raw-batch", record.batchNumber);
+  setValue("raw-status", record.status);
+  setValue("raw-notes", record.notes);
 }
 
 function populateSales(record) {
@@ -3424,6 +5795,7 @@ function populateOrders(record) {
     amount: record.amount || 0
   }]);
   setValue("ord-delivery", record.deliveryCharge);
+  setValue("ord-expense-note", record.expenseNote);
   setValue("ord-payable", record.totalPayable);
   setValue("ord-paid", record.paidAmount);
   setValue("ord-payment-mode", record.paymentMode);
@@ -3488,32 +5860,98 @@ function populateProduction(record) {
   setValue("prod-batch", record.batch);
   setValue("prod-date", record.date);
   setValue("prod-pname", record.productName);
-  setValue("prod-raw", record.rawMaterial);
+  document.getElementById("production-materials-container").innerHTML = "";
+  const materials = Array.isArray(record.rawMaterials) && record.rawMaterials.length
+    ? record.rawMaterials
+    : [{ name: record.rawMaterial, quantity: 1, rate: getNumberFromValue(record.batchCost), unit: "" }];
+  materials.forEach((material) => addProductionMaterialRow(material));
   setValue("prod-qty", record.quantityProduced);
   setValue("prod-pack", record.packingQty);
   setValue("prod-waste", record.wastage);
   setValue("prod-cost", record.batchCost);
+  setValue("prod-cost-unit", record.costPerUnit);
   setValue("prod-staff", record.staff);
   setValue("prod-notes", record.notes);
+  recalculateProductionCost();
+}
+
+
+
+
+function populateManagerLoan(record) {
+  setValue("loan-lender", record.lender);
+  setValue("loan-contact", record.contact);
+  setValue("loan-purpose", record.purpose);
+  setValue("loan-principal", record.principalAmount);
+  setValue("loan-date", record.date);
+  setValue("loan-interest", record.interestRate);
+  setValue("loan-status", record.status);
+  setValue("loan-notes", record.notes);
+}
+
+function populateLoanRepayment(record) {
+  refreshLoanRepaymentOptions();
+  setValue("repayment-loan", record.loanId);
+  setValue("repayment-date", record.date);
+  setValue("repayment-amount", record.amount);
+  setValue("repayment-mode", record.paymentMode);
+  setValue("repayment-notes", record.notes);
+}
+
+function populateAsset(record) {
+  setValue("asset-name", record.assetName);
+  setValue("asset-type", record.type);
+  setValue("asset-value", record.purchaseValue);
+  setValue("asset-date", record.purchaseDate);
+  setValue("asset-vendor", record.vendor);
+  setValue("asset-condition", record.condition);
+  setValue("asset-status", record.status);
+  setValue("asset-notes", record.notes);
+}
+
+function populateEmployee(record) {
+  setValue("emp-name", record.name);
+  setValue("emp-phone", record.phone);
+  setValue("emp-role", record.role);
+  setValue("emp-salary-type", record.salaryType);
+  setValue("emp-salary-rate", record.salaryRate);
+  setValue("emp-joining-date", record.joiningDate);
+  setValue("emp-status", record.status);
+  setValue("emp-notes", record.notes);
+}
+
+function populateSalaryPayment(record) {
+  refreshSalaryEmployeeOptions();
+  setValue("salary-employee", record.employeeId);
+  setValue("salary-period", record.period);
+  setValue("salary-amount", record.amount);
+  setValue("salary-mode", record.paymentMode);
+  setValue("salary-date", record.paymentDate);
+  setValue("salary-status", record.status);
+  setValue("salary-notes", record.notes);
 }
 
 function populateSharing(record) {
-  setValue("shr-period", record.period);
-  setValue("shr-profit", record.totalProfit);
-  setValue("shr-investor", record.investor);
-  setValue("shr-percentage", record.share);
-  setValue("shr-amount", record.amount);
+  setValue("shr-from-date", record.fromDate);
+  setValue("shr-to-date", record.toDate);
+  setValue("shr-reserve-amount", record.reserveAmount);
+  setValue("shr-reserve-percentage", record.reservePercentage);
   setValue("shr-status", record.status);
   setValue("shr-date", record.date);
   setValue("shr-notes", record.notes);
+  currentProfitDistributionPreview = record;
+  renderProfitSharingPreview(record);
 }
 
 function activeSectionKey() {
   return {
     products: KEYS.products,
     customers: KEYS.customers,
+    parties: KEYS.orders,
     suppliers: KEYS.suppliers,
     investors: KEYS.investors,
+    "payment-requests": KEYS.investorPaymentRequests,
+    "expense-approvals": KEYS.investorExpenses,
     purchase: KEYS.purchases,
     inventory: KEYS.inventory,
     sales: KEYS.sales,
@@ -3523,7 +5961,12 @@ function activeSectionKey() {
     income: KEYS.income,
     cashbook: KEYS.cashBook,
     bankbook: KEYS.bankBook,
+    "company-finance": KEYS.dailyAccounts,
+    employees: KEYS.employees,
+    assets: KEYS.assets,
+    "manager-loans": KEYS.managerLoans,
     production: KEYS.production,
+    "raw-materials": KEYS.rawMaterials,
     "investment-sharing": KEYS.sharing
   }[activeSectionId];
 }
@@ -3533,6 +5976,10 @@ async function refreshActiveData() {
   renderModule(activeSectionId);
   updateDashboardMetrics();
 }
+
+window.addEventListener("beforeunload", () => {
+  realtimeSubscription?.unsubscribe();
+});
 
 function getValue(id) {
   return document.getElementById(id)?.value.trim() || "";

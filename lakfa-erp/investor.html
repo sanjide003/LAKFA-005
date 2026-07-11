@@ -24,6 +24,8 @@
           <span class="icon"><svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg></span>
           Performance Overview
         </a>
+        <a href="#payment-requests" class="sidebar-item"><span class="icon"><svg viewBox="0 0 24 24"><path d="M6 5h12"></path><path d="M7 9h10"></path><path d="M9 5c4 0 5 6 0 7l6 7"></path></svg></span>Payment Requests</a>
+        <a href="#contribution-requests" class="sidebar-item"><span class="icon"><svg viewBox="0 0 24 24"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg></span>Contribution Requests</a>
         <a href="#" id="logout-btn" class="sidebar-item" style="color: var(--danger); margin-top: auto;">
           <span class="icon" style="color: var(--danger);"><svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg></span>
           Logout
@@ -99,6 +101,36 @@
             </div>
             <div id="inv-last-payout" class="card-value" style="font-size: 1.35rem; font-weight: 700; padding: 0.35rem 0;">No payout yet</div>
             <div class="card-footer">Most recent distribution period</div>
+          </div>
+        </div>
+
+
+
+        <div id="investor-notifications" class="card" style="margin-top: 2rem;">
+          <div class="card-title">Notifications</div>
+          <div id="investor-notification-list" class="table-responsive" style="margin-bottom:0;"><table><tbody><tr><td class="text-center">Loading notifications...</td></tr></tbody></table></div>
+        </div>
+
+        <div id="payment-requests" class="card" style="margin-top: 2rem;">
+          <div class="card-title">Manager Payment Requests</div>
+          <div class="table-responsive" style="margin-bottom:0;">
+            <table><thead><tr><th>Purpose</th><th>Amount</th><th>Due Date</th><th>Status</th><th>Action</th></tr></thead><tbody id="investor-payment-requests-body"><tr><td colspan="5" class="text-center">Loading payment requests...</td></tr></tbody></table>
+          </div>
+        </div>
+
+        <div id="contribution-requests" class="module-layout" style="grid-template-columns: 360px 1fr; margin-top: 2rem;">
+          <div class="card">
+            <div class="card-title">Submit Contribution / Expense Request</div>
+            <form id="investor-expense-form">
+              <div class="form-group"><label>Purpose</label><input type="text" id="investor-expense-purpose" class="form-control" required></div>
+              <div class="form-group"><label>Amount ₹</label><input type="number" id="investor-expense-amount" class="form-control" min="0.01" step="0.01" required></div>
+              <div class="form-group"><label>Notes</label><input type="text" id="investor-expense-notes" class="form-control"></div>
+              <button type="submit" class="btn-primary" style="width:100%;">Send for Approval</button>
+            </form>
+          </div>
+          <div class="card">
+            <div class="card-title">My Contribution Requests</div>
+            <div class="table-responsive" style="margin-bottom:0;"><table><thead><tr><th>Date</th><th>Purpose</th><th>Amount</th><th>Status</th><th>Notes</th></tr></thead><tbody id="investor-expense-requests-body"><tr><td colspan="5" class="text-center">Loading contribution requests...</td></tr></tbody></table></div>
           </div>
         </div>
 

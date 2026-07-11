@@ -1,0 +1,120 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function hasActiveProfile() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status == 'active';
+    }
+
+    function hasRole(role) {
+      return hasActiveProfile() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == role;
+    }
+
+    function isAdmin() {
+      return hasActiveProfile() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'manager'];
+    }
+
+    function isInvestor() {
+      return hasRole('investor');
+    }
+
+    function hasPermission(permission) {
+      return hasActiveProfile()
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.permissions[permission] == true;
+    }
+
+    function collectionPermission(collectionName) {
+      return collectionName in ['orders', 'sales', 'deliveries', 'customers', 'customerLedger', 'orderPayments', 'orderExpenses'] ? 'orders'
+        : collectionName in ['products', 'inventory', 'rawMaterials', 'stockLedger', 'rawMaterialLedger'] ? 'inventory'
+        : collectionName in ['financeAccounts', 'financeCategories', 'financeTransfers', 'dailyAccounts', 'cashbook', 'bankbook', 'expenses', 'income', 'ledgerEntries', 'supplierLedger', 'purchases', 'suppliers', 'managerLoans', 'loanRepayments', 'employees', 'salaryPayments', 'assets'] ? 'finance'
+        : collectionName in ['productionBatches'] ? 'production'
+        : collectionName in ['investors', 'investorExpenses', 'investorPaymentRequests', 'profitDistributions', 'notifications'] ? 'investors'
+        : collectionName in ['auditLogs'] ? 'reports'
+        : collectionName in ['settings', 'users'] ? 'settings'
+        : 'reports';
+    }
+
+    function hasCollectionPermission(collectionName) {
+      return hasPermission(collectionPermission(collectionName));
+    }
+
+    function isOwner(userId) {
+      return signedIn() && request.auth.uid == userId;
+    }
+
+    function investorReportCollection(collectionName) {
+      return collectionName in [
+        'profitSharing',
+        'profitDistributions',
+        'inventory',
+        'expenses',
+        'income'
+      ];
+    }
+
+
+    function ownsInvestorPayload(data) {
+      return isInvestor()
+        && request.auth.token.email != null
+        && data.investorEmail == request.auth.token.email;
+    }
+
+    function targetsInvestor(data) {
+      return isInvestor()
+        && request.auth.token.email != null
+        && (data.targetInvestor == 'all'
+          || data.targetInvestorId == 'all'
+          || data.targetInvestorEmail == request.auth.token.email);
+    }
+
+    match /investors/{documentId} {
+      allow read: if isAdmin() || (isInvestor() && resource.data.email == request.auth.token.email);
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /investorPaymentRequests/{documentId} {
+      allow read: if isAdmin() || targetsInvestor(resource.data);
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /investorExpenses/{documentId} {
+      allow read: if isAdmin() || ownsInvestorPayload(resource.data);
+      allow create: if isAdmin() || ownsInvestorPayload(request.resource.data);
+      allow update: if isAdmin() || (ownsInvestorPayload(resource.data)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['notes', 'status', 'updatedAt', 'updatedBy'])
+        && request.resource.data.status in ['pending', 'cancelled']);
+      allow delete: if isAdmin();
+    }
+
+    match /notifications/{documentId} {
+      allow read: if isAdmin() || ownsInvestorPayload(resource.data);
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() || (ownsInvestorPayload(resource.data)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read', 'status', 'readAt', 'updatedAt', 'updatedBy']));
+    }
+
+    match /users/{userId} {
+      allow read: if isAdmin() || isOwner(userId);
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /settings/{documentId} {
+      allow read: if hasActiveProfile();
+      allow create, update, delete: if isAdmin() || hasPermission('settings');
+    }
+
+    // Owner-scoped investor collections are handled above; admin-managed ERP collections include rawMaterials, rawMaterialLedger, stockLedger, supplierLedger,
+    // financeAccounts, financeCategories, financeTransfers, dailyAccounts, employees, salaryPayments, assets, managerLoans, loanRepayments, ledgerEntries,
+    // productionBatches, inventory, and all other operational modules.
+    match /{collectionName}/{documentId} {
+      allow read: if isAdmin() || hasCollectionPermission(collectionName) || (isInvestor() && investorReportCollection(collectionName));
+      allow create, update, delete: if isAdmin() || hasCollectionPermission(collectionName);
+    }
+  }
+}

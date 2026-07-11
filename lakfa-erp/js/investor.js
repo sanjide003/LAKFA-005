@@ -1,11 +1,26 @@
 /* Lakfa ERP Investor Controller */
 import { logoutUser } from "./role-guard.js";
-import { formatCurrency, formatDate } from "./utils.js";
+import { formatCurrency, formatDate, showToast } from "./utils.js";
 import { auth } from "./firebase-config.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-import { COLLECTIONS, getCollectionRecords } from "./firebase-db.js";
+import { COLLECTIONS, createCollectionRecord, updateCollectionRecord, subscribeCollections, subscribeCollectionWhere } from "./firebase-db.js";
+
+const INVESTOR_COLLECTIONS = {
+  sharing: COLLECTIONS.sharing,
+  inventory: COLLECTIONS.inventory,
+  expenses: COLLECTIONS.expenses,
+  income: COLLECTIONS.income,
+  profitDistributions: COLLECTIONS.profitDistributions
+};
+
+let investorState = Object.fromEntries(Object.keys(INVESTOR_COLLECTIONS).map((key) => [key, []]));
+let investorSubscription = null;
+let investorScopedUnsubscribers = [];
+let activeInvestorEmail = "";
+let activeInvestorProfile = null;
 
 document.addEventListener("DOMContentLoaded", () => {
+  document.getElementById("investor-expense-form")?.addEventListener("submit", submitInvestorExpenseRequest);
   const logoutBtn = document.getElementById("logout-btn");
   if (logoutBtn) {
     logoutBtn.addEventListener("click", logoutUser);
@@ -13,22 +28,56 @@ document.addEventListener("DOMContentLoaded", () => {
 
   onAuthStateChanged(auth, async (user) => {
     if (user) {
-      await loadInvestorDashboard(user.email);
+      activeInvestorEmail = user.email || "";
+      await initInvestorRealtimeDashboard(activeInvestorEmail);
     }
   });
 });
 
-async function loadInvestorDashboard(email) {
+async function initInvestorRealtimeDashboard(email) {
+  if (investorSubscription) {
+    renderInvestorDashboard(email);
+    return;
+  }
+
+  investorScopedUnsubscribers.forEach((unsubscribe) => unsubscribe());
+  investorScopedUnsubscribers = [
+    subscribeCollectionWhere(COLLECTIONS.investors, [["email", "==", email]], (records) => { investorState.investors = records; renderInvestorDashboard(email); }),
+    subscribeCollectionWhere(COLLECTIONS.investorExpenses, [["investorEmail", "==", email]], (records) => { investorState.investorExpenses = records; renderInvestorDashboard(email); }),
+    subscribeCollectionWhere(COLLECTIONS.investorPaymentRequests, [["targetInvestorId", "==", "all"]], (records) => { investorState.paymentRequestsAll = records; investorState.investorPaymentRequests = [...records, ...(investorState.paymentRequestsMine || [])]; renderInvestorDashboard(email); }),
+    subscribeCollectionWhere(COLLECTIONS.investorPaymentRequests, [["targetInvestorEmail", "==", email]], (records) => { investorState.paymentRequestsMine = records; investorState.investorPaymentRequests = [...(investorState.paymentRequestsAll || []), ...records]; renderInvestorDashboard(email); }),
+    subscribeCollectionWhere(COLLECTIONS.notifications, [["investorEmail", "==", email]], (records) => { investorState.notifications = records; renderInvestorDashboard(email); })
+  ];
+
+  investorSubscription = subscribeCollections(
+    INVESTOR_COLLECTIONS,
+    (key, records) => {
+      investorState[key] = records;
+      if (activeInvestorEmail) renderInvestorDashboard(activeInvestorEmail);
+    },
+    (err, key, collectionName) => {
+      console.error(`Investor realtime listener failed for ${collectionName || key}`, err);
+      renderMissingInvestor(email, "Unable to sync Firebase data. Please contact admin.");
+    }
+  );
+
+  await investorSubscription.initialLoad;
+  renderInvestorDashboard(email);
+}
+
+function renderInvestorDashboard(email) {
   try {
-    const [investorsList, sharingHistory, inventory, expenses, income] = await Promise.all([
-      getCollectionRecords(COLLECTIONS.investors),
-      getCollectionRecords(COLLECTIONS.sharing),
-      getCollectionRecords(COLLECTIONS.inventory),
-      getCollectionRecords(COLLECTIONS.expenses),
-      getCollectionRecords(COLLECTIONS.income)
-    ]);
+    const investorsList = investorState.investors || [];
+    const sharingHistory = [
+      ...(investorState.sharing || []),
+      ...(investorState.profitDistributions || [])
+    ];
+    const inventory = investorState.inventory || [];
+    const expenses = investorState.expenses || [];
+    const income = investorState.income || [];
 
     const investorProfile = investorsList.find((inv) => inv.email?.toLowerCase() === email?.toLowerCase());
+    activeInvestorProfile = investorProfile || null;
 
     if (!investorProfile) {
       renderMissingInvestor(email);
@@ -37,6 +86,12 @@ async function loadInvestorDashboard(email) {
       renderInventoryTable(inventory);
       renderExpenseTable(expenses);
       renderIncomeTable(income);
+    renderInvestorPaymentRequests(investorProfile);
+    renderInvestorExpenseRequests(investorProfile);
+    renderInvestorNotifications(investorProfile);
+      renderInvestorPaymentRequests(null);
+      renderInvestorExpenseRequests(null);
+      renderInvestorNotifications(null);
       return;
     }
 
@@ -81,11 +136,19 @@ async function loadInvestorDashboard(email) {
     renderInventoryTable(inventory);
     renderExpenseTable(expenses);
     renderIncomeTable(income);
+    renderInvestorPaymentRequests(investorProfile);
+    renderInvestorExpenseRequests(investorProfile);
+    renderInvestorNotifications(investorProfile);
   } catch (err) {
-    console.error("Unable to load investor dashboard from Firebase", err);
+    console.error("Unable to render investor dashboard from Firebase", err);
     renderMissingInvestor(email, "Unable to load Firebase data. Please contact admin.");
   }
 }
+
+window.addEventListener("beforeunload", () => {
+  investorSubscription?.unsubscribe();
+  investorScopedUnsubscribers.forEach((unsubscribe) => unsubscribe());
+});
 
 function renderMissingInvestor(email, message = "No investor profile is assigned to this login. Please contact admin.") {
   document.getElementById("investor-display-name").textContent = email || "Investor";
@@ -198,4 +261,86 @@ function renderRows(tableBodyId, records, colspan, rowTemplate) {
     tr.innerHTML = rowTemplate(row);
     tbody.appendChild(tr);
   });
+}
+
+
+function requestTargetsInvestor(request, investorProfile) {
+  if (!investorProfile) return false;
+  const target = request.targetInvestorId || request.targetInvestor;
+  return target === "all" || target === investorProfile.id || request.targetInvestorEmail?.toLowerCase() === investorProfile.email?.toLowerCase();
+}
+
+function renderInvestorPaymentRequests(investorProfile) {
+  const visibleRequests = (investorState.investorPaymentRequests || []).filter((request) => request.status !== "Cancelled" && requestTargetsInvestor(request, investorProfile));
+  renderRows("investor-payment-requests-body", visibleRequests, 5, (row) => `
+    <td>${row.purpose || '-'}</td>
+    <td><strong>${formatCurrency(row.amount)}</strong></td>
+    <td>${row.dueDate ? formatDate(row.dueDate) : '-'}</td>
+    <td><span class="badge ${row.status === 'Open' ? 'badge-warning' : 'badge-success'}">${row.status || 'Open'}</span></td>
+    <td>${row.status === 'Open' ? `<button class="btn-primary btn-sm accept-payment-request" data-id="${row.id}">Accept / Request Contribution</button>` : '-'}</td>
+  `);
+  document.querySelectorAll(".accept-payment-request").forEach((button) => button.addEventListener("click", () => acceptManagerPaymentRequest(button.dataset.id)));
+}
+
+function renderInvestorExpenseRequests(investorProfile) {
+  const ownRequests = (investorState.investorExpenses || []).filter((request) => request.investorId === investorProfile?.id || request.investorEmail?.toLowerCase() === investorProfile?.email?.toLowerCase());
+  renderRows("investor-expense-requests-body", ownRequests, 5, (row) => `
+    <td>${row.date ? formatDate(row.date) : '-'}</td>
+    <td>${row.purpose || '-'}</td>
+    <td><strong>${formatCurrency(row.amount)}</strong></td>
+    <td><span class="badge ${(row.status || 'pending') === 'approved' ? 'badge-success' : (row.status || '') === 'rejected' ? 'badge-danger' : 'badge-warning'}">${row.status || 'pending'}</span></td>
+    <td>${row.notes || ''}</td>
+  `);
+}
+
+function renderInvestorNotifications(investorProfile) {
+  const notifications = (investorState.notifications || []).filter((note) => note.investorId === investorProfile?.id || note.investorEmail?.toLowerCase() === investorProfile?.email?.toLowerCase());
+  const container = document.getElementById("investor-notification-list");
+  if (!container) return;
+  container.innerHTML = `<table><thead><tr><th>Alert</th><th>Message</th><th>Status</th><th>Action</th></tr></thead><tbody>${notifications.length ? notifications.map((note) => `<tr><td>${note.title || '-'}</td><td>${note.message || '-'}</td><td><span class="badge ${note.read ? 'badge-success' : 'badge-warning'}">${note.read ? 'Read' : 'Unread'}</span></td><td>${!note.read ? `<button class="btn-secondary btn-sm mark-notification-read" data-id="${note.id}">Mark Read</button>` : '-'}</td></tr>`).join("") : `<tr><td colspan="4" class="text-center">No notifications.</td></tr>`}</tbody></table>`;
+  container.querySelectorAll(".mark-notification-read").forEach((button) => button.addEventListener("click", () => markNotificationRead(button.dataset.id)));
+}
+
+async function submitInvestorExpenseRequest(event) {
+  event.preventDefault();
+  if (!activeInvestorProfile) return showToast("Investor profile not loaded.", "error");
+  const amount = parseFloat(document.getElementById("investor-expense-amount")?.value || 0);
+  const purpose = document.getElementById("investor-expense-purpose")?.value.trim();
+  const notes = document.getElementById("investor-expense-notes")?.value.trim();
+  if (!purpose || amount <= 0) return showToast("Enter purpose and valid amount.", "error");
+  await createCollectionRecord(COLLECTIONS.investorExpenses, {
+    investorId: activeInvestorProfile.id,
+    investorName: activeInvestorProfile.name,
+    investorEmail: activeInvestorProfile.email || activeInvestorEmail,
+    purpose,
+    amount,
+    notes,
+    status: "pending",
+    date: new Date().toISOString().slice(0, 10),
+    source: "investor"
+  });
+  event.target.reset();
+  showToast("Contribution request sent for approval.", "success");
+}
+
+async function acceptManagerPaymentRequest(requestId) {
+  const request = (investorState.investorPaymentRequests || []).find((row) => row.id === requestId);
+  if (!request || !activeInvestorProfile) return;
+  await createCollectionRecord(COLLECTIONS.investorExpenses, {
+    investorId: activeInvestorProfile.id,
+    investorName: activeInvestorProfile.name,
+    investorEmail: activeInvestorProfile.email || activeInvestorEmail,
+    managerRequestId: request.id,
+    purpose: request.purpose,
+    amount: parseFloat(request.amount || 0),
+    notes: request.notes || "Accepted manager payment request",
+    status: "pending",
+    date: new Date().toISOString().slice(0, 10),
+    source: "manager-payment-request"
+  });
+  showToast("Payment request accepted and sent for manager approval.", "success");
+}
+
+async function markNotificationRead(id) {
+  await updateCollectionRecord(COLLECTIONS.notifications, id, { read: true, status: "read", readAt: new Date().toISOString() });
 }

@@ -1,5 +1,5 @@
 /* Lakfa ERP Progressive Web App Service Worker */
-const CACHE_NAME = "lakfa-erp-cache-v15";
+const CACHE_NAME = "lakfa-erp-cache-v29";
 const ASSETS_TO_CACHE = [
   "index.html",
   "manager.html",
@@ -13,7 +13,8 @@ const ASSETS_TO_CACHE = [
   "js/manager.js",
   "js/investor.js",
   "js/utils.js",
-  "manifest.json"
+  "manifest.json",
+  "assets/logo.svg"
 ];
 
 // Installation phase - Caching the shell files
